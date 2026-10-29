@@ -1,0 +1,47 @@
+[
+  {
+    "Id": "W1",
+    "Index": 1,
+    "Duration": 180.0,
+    "SpawnInterval": 1.2,
+    "SpawnCountMin": 1,
+    "SpawnCountMax": 2,
+    "EnemyPool": [
+      "Crawler"
+    ],
+    "ConcurrentCap": 40,
+    "CoinReward": 60,
+    "BossId": ""
+  },
+  {
+    "Id": "W2",
+    "Index": 2,
+    "Duration": 180.0,
+    "SpawnInterval": 1.0,
+    "SpawnCountMin": 2,
+    "SpawnCountMax": 3,
+    "EnemyPool": [
+      "Crawler",
+      "Thrower"
+    ],
+    "ConcurrentCap": 70,
+    "CoinReward": 80,
+    "BossId": ""
+  },
+  {
+    "Id": "W3",
+    "Index": 3,
+    "Duration": 180.0,
+    "SpawnInterval": 0.9,
+    "SpawnCountMin": 2,
+    "SpawnCountMax": 3,
+    "EnemyPool": [
+      "Crawler",
+      "Charger",
+      "Thrower"
+    ],
+    "ConcurrentCap": 100,
+    "CoinReward": 110,
+    "BossId": ""
+  }
+]

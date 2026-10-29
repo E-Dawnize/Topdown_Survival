@@ -1,0 +1,38 @@
+[
+  {
+    "Id": "Scavenger",
+    "Name": "拾荒",
+    "Description": "均衡型，拾取范围 +50%",
+    "BaseHP": 100.0,
+    "BaseMoveSpeed": 5.0,
+    "BaseAttackInterval": 0.8,
+    "BaseDamage": 6.0,
+    "BaseRange": 8.0,
+    "StartingWeaponId": "Bow",
+    "TraitType": "ScavengerTrait"
+  },
+  {
+    "Id": "Sack",
+    "Name": "布袋",
+    "Description": "不能移动，全图吸取金币",
+    "BaseHP": 130.0,
+    "BaseMoveSpeed": 0.0,
+    "BaseAttackInterval": 0.75,
+    "BaseDamage": 7.0,
+    "BaseRange": 7.0,
+    "StartingWeaponId": "Sword",
+    "TraitType": "SackTrait"
+  },
+  {
+    "Id": "Biter",
+    "Name": "咬咬",
+    "Description": "碰撞流，击杀回血",
+    "BaseHP": 100.0,
+    "BaseMoveSpeed": 5.5,
+    "BaseAttackInterval": 0.9,
+    "BaseDamage": 5.0,
+    "BaseRange": 2.4,
+    "StartingWeaponId": "Sword",
+    "TraitType": "BiterTrait"
+  }
+]

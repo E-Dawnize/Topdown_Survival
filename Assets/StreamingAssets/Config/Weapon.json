@@ -1,0 +1,35 @@
+[
+  {
+    "Id": "Bow",
+    "Name": "弓箭",
+    "Kind": "Ranged",
+    "BaseDamage": 8.0,
+    "Cooldown": 0.85,
+    "Range": 8.0,
+    "Projectiles": 1,
+    "SpreadDeg": 0.0,
+    "BehaviourType": "Ranged",
+    "ProjectileSpeed": 18.0,
+    "Pierce": 1,
+    "Params": [
+      0.0
+    ]
+  },
+  {
+    "Id": "Sword",
+    "Name": "砍刀",
+    "Kind": "Melee",
+    "BaseDamage": 15.0,
+    "Cooldown": 0.6,
+    "Range": 2.2,
+    "Projectiles": 1,
+    "SpreadDeg": 45.0,
+    "BehaviourType": "Melee",
+    "ProjectileSpeed": 0.0,
+    "Pierce": 0,
+    "Params": [
+      0.08,
+      0.22
+    ]
+  }
+]

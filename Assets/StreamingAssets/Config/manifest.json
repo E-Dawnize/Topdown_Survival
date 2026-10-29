@@ -1,0 +1,14 @@
+{
+  "version": "741b4ba082a6",
+  "exportedAt": "2026-10-29 19:56:59",
+  "tables": [
+    "Character",
+    "Weapon",
+    "Companion",
+    "Item",
+    "Enemy",
+    "Wave",
+    "Buff",
+    "Balance"
+  ]
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "Id": "Crawler",
+    "Name": "爬虫",
+    "Behaviour": "Chase",
+    "HP": 12.0,
+    "Damage": 6.0,
+    "Speed": 3.0,
+    "AttackRange": 0.6,
+    "AttackInterval": 1.0,
+    "CoinDrop": 1,
+    "BodyRadius": 0.35
+  },
+  {
+    "Id": "Charger",
+    "Name": "冲锋兵",
+    "Behaviour": "Charge",
+    "HP": 18.0,
+    "Damage": 10.0,
+    "Speed": 2.5,
+    "AttackRange": 4.0,
+    "AttackInterval": 3.0,
+    "CoinDrop": 2,
+    "BodyRadius": 0.4
+  },
+  {
+    "Id": "Thrower",
+    "Name": "投手",
+    "Behaviour": "Ranged",
+    "HP": 15.0,
+    "Damage": 8.0,
+    "Speed": 2.0,
+    "AttackRange": 5.0,
+    "AttackInterval": 2.5,
+    "CoinDrop": 2,
+    "BodyRadius": 0.35
+  }
+]

@@ -1,0 +1,68 @@
+[
+  {
+    "Id": "WoolGlove",
+    "Name": "毛线手套",
+    "Description": "生命回复 -2，拾取金币 10% 回 1 血",
+    "Rarity": "Common",
+    "BasePrice": 25,
+    "Category": "Trigger",
+    "StatA": "Regen",
+    "ValueA": -2.0,
+    "StatB": "Unknown",
+    "ValueB": 0.0,
+    "MaxStack": 3,
+    "EffectType": "CoinHeal",
+    "EffectParams": [
+      0.1,
+      1.0
+    ]
+  },
+  {
+    "Id": "IronNeck",
+    "Name": "铁皮护颈",
+    "Description": "碰撞伤害 +10",
+    "Rarity": "Rare",
+    "BasePrice": 45,
+    "Category": "Passive",
+    "StatA": "ContactDamage",
+    "ValueA": 10.0,
+    "StatB": "Unknown",
+    "ValueB": 0.0,
+    "MaxStack": 2,
+    "EffectType": "",
+    "EffectParams": []
+  },
+  {
+    "Id": "Perfume",
+    "Name": "香水",
+    "Description": "每次受击攻击力 +3%，本波可叠 30 层",
+    "Rarity": "Epic",
+    "BasePrice": 80,
+    "Category": "Trigger",
+    "StatA": "Unknown",
+    "ValueA": 0.0,
+    "StatB": "Unknown",
+    "ValueB": 0.0,
+    "MaxStack": 3,
+    "EffectType": "OnHurtAttackUp",
+    "EffectParams": [
+      0.03,
+      30.0
+    ]
+  },
+  {
+    "Id": "InfiniteSign",
+    "Name": "无限路牌",
+    "Description": "第 5 波结束后进入无尽模式",
+    "Rarity": "Legendary",
+    "BasePrice": 140,
+    "Category": "Special",
+    "StatA": "Unknown",
+    "ValueA": 0.0,
+    "StatB": "Unknown",
+    "ValueB": 0.0,
+    "MaxStack": 1,
+    "EffectType": "Endless",
+    "EffectParams": []
+  }
+]

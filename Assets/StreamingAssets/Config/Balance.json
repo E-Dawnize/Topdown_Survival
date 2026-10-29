@@ -1,0 +1,22 @@
+[
+  {
+    "Id": "CoinRewardBase",
+    "Value": 30.0,
+    "Note": "每波末基础金币"
+  },
+  {
+    "Id": "PriceGrowthPerWave",
+    "Value": 0.1,
+    "Note": "价格每波上浮比例"
+  },
+  {
+    "Id": "EnemyHpScalePerWave",
+    "Value": 1.9,
+    "Note": "敌人血量每波倍率"
+  },
+  {
+    "Id": "EnemyDamageScalePerWave",
+    "Value": 1.35,
+    "Note": "敌人伤害每波倍率"
+  }
+]

@@ -1,0 +1,26 @@
+[
+  {
+    "Id": "IronBox",
+    "Name": "铁盒",
+    "Faction": "Machine",
+    "WeaponId": "Bow",
+    "FollowRadius": 1.6,
+    "MaxHP": 40.0
+  },
+  {
+    "Id": "LampGhost",
+    "Name": "提灯鬼",
+    "Faction": "Ghost",
+    "WeaponId": "Bow",
+    "FollowRadius": 1.8,
+    "MaxHP": 30.0
+  },
+  {
+    "Id": "SquintFox",
+    "Name": "眯眼狐",
+    "Faction": "Beast",
+    "WeaponId": "Sword",
+    "FollowRadius": 1.4,
+    "MaxHP": 45.0
+  }
+]
