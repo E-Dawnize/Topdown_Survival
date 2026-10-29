@@ -7,7 +7,7 @@
 | 编号 | 任务 | 状态 | 证据 |
 |---|---|---|---|
 | I0-1 | 装包与项目设置 | 完成 | 三个包已下载到 Library/PackageCache；`activeInputHandler` 0→2；三档 URP 阴影距离统一 40、cascade 2、软阴影与 HDR 全开，差异只剩 MSAA 与阴影贴图分辨率 |
-| I0-2 | 场景骨架 | 代码完成，未运行 | `Assets/Scripts/Game/Editor/SceneBuilder.cs`，菜单 `Tools/Game/重建全部场景` 生成 Run / Test_Arena / Boot / MainMenu |
+| I0-2 | 场景骨架 | 完成 | Unity 内跑过 `Tools/Game/重建全部场景`，生成 Run(160m) / Test_Arena(40m) / Boot / MainMenu，Build Settings 自动写好；Run.unity 里 12 个 guid 全部能解析，无 missing script |
 | I0-3 | asmdef 三层 | 完成 | Unity 产出 `Game.Runtime.dll` / `Game.Editor.dll` / `Game.Tests.EditMode.dll` 三个独立程序集 |
 | I0-4 | 事件总线 | 完成 | `Core/Events/*`；15 项断言在命令行真跑过，全通过 |
 | I0-5 | 配置管线 | 完成 | `tools/make_config_template.py` 生成 8 sheet 的 xlsx；`tools/export_config.py` 导表；C# 侧加载并校验，真跑过 |
@@ -17,6 +17,8 @@
 ### 已验证
 
 Unity 内编译：`Library/ScriptAssemblies/` 里三个程序集都是 Unity 自己编出来的，`Game.Runtime.dll` 链接时 227 个引用，编译日志里没有项目相关的 `error CS` 与 `warning CS`。
+
+Unity 内运行：菜单生成四个场景并写 Build Settings，随后进 Play，Console 打出 `[Config] 加载成功 版本 741b4ba082a6｜角色 3｜武器 2｜旅伴 3｜道具 4｜敌人 3｜波次 3`，之后没有任何异常。
 
 命令行导表与运行时：
 
@@ -31,17 +33,16 @@ Unity 首次导入时出现过一次 `error CS2001: Source file 'Assets/Scripts/
 
 ### 未验证
 
-1. `Tools/Game/重建全部场景` 能否跑通，生成的场景是否符合预期（相机角度、光照、材质颜色）。
-2. 按 Play 后的运行时行为：配置加载日志、输入、F1 覆盖层。
+1. 画面本身：相机角度、光照、材质颜色是否符合预期。结构对不代表好看。
+2. 输入有没有反应（目前还没有读输入的代码，Play 时只构建了 ActionMap）。
 3. 导表脚本处理的 xlsx 是脚本自己生成的。Excel 重新保存过的文件还没试过，理论上 `sharedStrings` 与 `inlineStr` 两种都支持。
 
-### 需要人工执行
+### 下一步
 
-1. ~~用 Unity Hub 打开工程，等包下载与编译~~ 已完成。
-2. 菜单 `Tools/Game/重建全部场景`。
-3. 打开 `Assets/Scenes/Run.unity`，按 Play，确认：相机以 50° 俯视，地面 160×160，Console 打出 `[Config] 加载成功 版本 …`，F1 有覆盖层。
-
-如果第 2 步报错，先看 Console 里是编译错误还是 Cinemachine API 不匹配。
+1. ~~用 Unity Hub 打开工程~~ 已完成。
+2. ~~菜单 `Tools/Game/重建全部场景`~~ 已完成。
+3. ~~打开 Run.unity 按 Play，确认配置加载日志~~ 已完成。
+4. 进迭代 1：玩家移动、属性与伤害、空间哈希压测。
 
 ## I1 战斗核心
 

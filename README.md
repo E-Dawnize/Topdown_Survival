@@ -6,6 +6,7 @@
 
 ## 文档
 
+- [项目现状](Assets/docs/STATUS.md) ← 先看这个
 - [游戏设计文档](Assets/docs/GDD.md)
 - [技术方案](Assets/docs/TECH_DESIGN.md)
 - [迭代方案](Assets/docs/ITERATION_PLAN.md)
