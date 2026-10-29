@@ -52,6 +52,7 @@ Unity 首次导入时出现过一次 `error CS2001: Source file 'Assets/Scripts/
 |---|---|---|---|
 | I1-1 | 玩家移动 | 代码完成，待 Unity 内手测 | PlayerModel / PlayerController / PlayerView 三层，RunLoop 固定 60Hz 步长；10 项断言 |
 | I1-2 | 冲刺 | 代码完成，待 Unity 内手测 | 0.15s 持续、3 倍速、2s 冷却；起步这一步立即有速度；同帧多步只触发一次 |
+| 提前 | 基础 HUD | 代码完成，待 Unity 内手测 | 血条、金币、波次、冲刺冷却条，全部代码搭建；玩家生命接 CharacterDef.BaseHP；F2/F3 调试键 |
 | I1-3 | StatBlock | 未开始 | 当前移速等属性在 PlayerModel 构造时定死 |
 | I1-4 | DamageResolver | 未开始 | |
 | I1-5 | 空间哈希 | 未开始 | |
@@ -66,6 +67,8 @@ Unity 首次导入时出现过一次 `error CS2001: Source file 'Assets/Scripts/
 沿输入以移速前进、对角线归一化、边界夹紧、冲刺触发事件并进入冲刺态、同帧多步只冲一次、冷却期间不能冲、冲刺结束回到走速、无输入时按朝向冲刺、朝向跟随速度、冲刺位移在 2.2–2.9 米、贴边冲刺仍被夹住。
 
 写的过程中修掉一个 bug：StartDash 只设了计时器没设速度，导致冲刺第一步人没动但事件已经发了。
+
+HUD 提前做了（原计划在 I2-9）：没有敌人时血条不会掉，所以加了 F2 扣血、F3 加金币两个调试键来验证 UI 是活的，等敌人接上后删掉。UI 用 uGUI + 代码生成，没走 TextMeshPro——项目还没导入 TMP Essentials，运行时建 TMP 文本会缺默认字体。中文字体在 Windows 上用系统字体动态加载，换平台要换方案。
 
 未验证：
 1. Unity 内编译（Game.Runtime.dll 停在 19:58，编辑器没重新编译新代码）。
