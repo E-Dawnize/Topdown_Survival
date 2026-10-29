@@ -1,5 +1,5 @@
 using System.IO;
-using Cinemachine;
+using Game.Config;
 using Game.Core;
 using Game.Services;
 using Game.Views;
@@ -11,8 +11,9 @@ using UnityEngine.SceneManagement;
 namespace Game.EditorTools
 {
     /// <summary>
-    /// 场景骨架生成器。用代码建场景而不是手写 .unity，避免 YAML 手改出问题。
-    /// 参数改了重跑一次即可，不需要在场景里手工调。
+    /// 场景脚手架。场景里只保留需要目视调、且很少变的东西：
+    /// 方向光、地面、边界墙、主相机、AppRoot、HUD 实例。
+    /// 玩家、虚拟相机、相机目标点都在运行时创建，改参数不需要重建场景。
     /// </summary>
     public static class SceneBuilder
     {
@@ -42,8 +43,11 @@ namespace Game.EditorTools
                 return;
             }
 
-            Directory.CreateDirectory(ScenesDir);
-            Directory.CreateDirectory(MaterialsDir);
+            PrefabBuilder.EnsureFolder(ScenesDir);
+            PrefabBuilder.EnsureFolder(MaterialsDir);
+
+            // 预制体是场景的前置依赖，缺了就先生成
+            PrefabBuilder.BuildAll();
 
             BuildArenaScene(Path.Combine(ScenesDir, "Run.unity"), GroundSize, "Run");
             BuildArenaScene(Path.Combine(ScenesDir, "Test_Arena.unity"), ArenaSize, "Test_Arena");
@@ -84,14 +88,13 @@ namespace Game.EditorTools
         {
             Scene scene = NewScene();
 
-            // 装配根
+            // 装配根：输入、调试层、主循环、相机装配、AppRoot
             var rootGo = new GameObject("AppRoot");
             rootGo.AddComponent<InputService>();
             rootGo.AddComponent<DebugOverlay>();
             rootGo.AddComponent<RunLoop>();
             CameraRig cameraRig = rootGo.AddComponent<CameraRig>();
-            rootGo.AddComponent<HudView>();
-            rootGo.AddComponent<AppRoot>();
+            AppRoot appRoot = rootGo.AddComponent<AppRoot>();
 
             // 方向光
             var lightGo = new GameObject("Directional Light");
@@ -112,37 +115,14 @@ namespace Game.EditorTools
                 GetOrCreateMaterial("MAT_Ground", new Color(0.26f, 0.28f, 0.31f));
             Object.DestroyImmediate(ground.GetComponent<Collider>());
 
-            // 边界：四块暗色挡板，先给个可见的尽头，玩法逻辑里的 clamp 在 I1 加
+            // 边界挡板
             float half = size * 0.5f;
             CreateWall("Boundary_N", new Vector3(0f, 1f, half + 0.5f), new Vector3(size + 2f, 2f, 1f));
             CreateWall("Boundary_S", new Vector3(0f, 1f, -half - 0.5f), new Vector3(size + 2f, 2f, 1f));
             CreateWall("Boundary_E", new Vector3(half + 0.5f, 1f, 0f), new Vector3(1f, 2f, size + 2f));
             CreateWall("Boundary_W", new Vector3(-half - 0.5f, 1f, 0f), new Vector3(1f, 2f, size + 2f));
 
-            // 玩家占位
-            GameObject player = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            player.name = "Player";
-            player.transform.position = new Vector3(0f, 0.5f, 0f);
-            player.GetComponent<Renderer>().sharedMaterial =
-                GetOrCreateMaterial("MAT_Player", new Color(0.85f, 0.87f, 0.92f));
-            Object.DestroyImmediate(player.GetComponent<Collider>());
-            player.AddComponent<PlayerView>();
-
-            // 朝向指示：胶囊本身看不出朝向，加一个前伸的小方块
-            GameObject front = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            front.name = "Front";
-            front.transform.SetParent(player.transform, false);
-            front.transform.localPosition = new Vector3(0f, 0.15f, 0.42f);
-            front.transform.localScale = new Vector3(0.18f, 0.12f, 0.36f);
-            front.GetComponent<Renderer>().sharedMaterial =
-                GetOrCreateMaterial("MAT_PlayerFront", new Color(0.35f, 0.75f, 1f));
-            Object.DestroyImmediate(front.GetComponent<Collider>());
-
-            // 相机目标点：Cinemachine 跟它，由 CameraRig 每帧夹在场地内
-            var camTarget = new GameObject("CameraTarget");
-            camTarget.transform.position = new Vector3(0f, 0f, 0f);
-
-            // 相机 + Cinemachine
+            // 主相机：虚拟相机与目标点在运行时由 CameraRig 创建
             var camGo = new GameObject("Main Camera");
             camGo.tag = "MainCamera";
             Camera cam = camGo.AddComponent<Camera>();
@@ -153,29 +133,31 @@ namespace Game.EditorTools
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.06f, 0.07f, 0.09f);
             camGo.AddComponent<AudioListener>();
-            camGo.AddComponent<CinemachineBrain>();
+            camGo.AddComponent<Cinemachine.CinemachineBrain>();
             camGo.transform.position = CameraOffset;
             camGo.transform.rotation = Quaternion.Euler(CameraTilt, 0f, 0f);
 
-            var vcamGo = new GameObject("vcam_Follow");
-            vcamGo.transform.position = CameraOffset;
-            vcamGo.transform.rotation = Quaternion.Euler(CameraTilt, 0f, 0f);
-            CinemachineVirtualCamera vcam = vcamGo.AddComponent<CinemachineVirtualCamera>();
-            vcam.Priority = 10;
-            vcam.Follow = camTarget.transform;
-            vcam.m_Lens.Orthographic = true;
-            vcam.m_Lens.OrthographicSize = OrthoSize;
-            vcam.m_Lens.NearClipPlane = 0.3f;
-            vcam.m_Lens.FarClipPlane = 300f;
+            // HUD 实例
+            GameObject hudPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabBuilder.HudPrefabPath);
+            if (hudPrefab != null)
+            {
+                var hud = (GameObject)PrefabUtility.InstantiatePrefab(hudPrefab);
+                hud.transform.SetParent(null);
+            }
+            else
+            {
+                Debug.LogWarning("[SceneBuilder] 没找到 HUD 预制体，场景里不会有 HUD");
+            }
 
-            CinemachineTransposer transposer = vcam.AddCinemachineComponent<CinemachineTransposer>();
-            transposer.m_BindingMode = CinemachineTransposer.BindingMode.LockToTargetNoRoll;
-            transposer.m_FollowOffset = CameraOffset;
-            transposer.m_XDamping = 0.35f;
-            transposer.m_YDamping = 0.0f;
-            transposer.m_ZDamping = 0.35f;
+            // 装配引用
+            SetObjectField(cameraRig, "_camera", cam);
+            SetFloatField(cameraRig, "_orthoSize", OrthoSize);
+            SetFloatField(cameraRig, "_tiltDegrees", CameraTilt);
+            SetFloatField(cameraRig, "_groundHalfExtent", size * 0.5f);
+            SetFloatField(cameraRig, "_distance", CameraDistance);
 
-            cameraRig.Configure(camTarget.transform, cam, OrthoSize, CameraTilt, size * 0.5f);
+            UnitPrefabMap map = AssetDatabase.LoadAssetAtPath<UnitPrefabMap>(PrefabBuilder.MapPath);
+            SetObjectField(appRoot, "_prefabMap", map);
 
             EditorSceneManager.SaveScene(scene, path);
             Debug.Log($"[SceneBuilder] 生成 {sceneName} ({size}×{size} 米)");
@@ -201,7 +183,9 @@ namespace Game.EditorTools
                 var rootGo = new GameObject("AppRoot");
                 rootGo.AddComponent<InputService>();
                 rootGo.AddComponent<DebugOverlay>();
-                rootGo.AddComponent<AppRoot>();
+                AppRoot appRoot = rootGo.AddComponent<AppRoot>();
+                UnitPrefabMap map = AssetDatabase.LoadAssetAtPath<UnitPrefabMap>(PrefabBuilder.MapPath);
+                SetObjectField(appRoot, "_prefabMap", map);
             }
             else
             {
@@ -221,6 +205,34 @@ namespace Game.EditorTools
 
             EditorSceneManager.SaveScene(scene, path);
             Debug.Log($"[SceneBuilder] 生成 {sceneName}");
+        }
+
+        static void SetObjectField(Object target, string field, Object value)
+        {
+            var so = new SerializedObject(target);
+            SerializedProperty property = so.FindProperty(field);
+            if (property == null)
+            {
+                Debug.LogError($"[SceneBuilder] {target.name} 上没有字段 {field}");
+                return;
+            }
+
+            property.objectReferenceValue = value;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        static void SetFloatField(Object target, string field, float value)
+        {
+            var so = new SerializedObject(target);
+            SerializedProperty property = so.FindProperty(field);
+            if (property == null)
+            {
+                Debug.LogError($"[SceneBuilder] {target.name} 上没有字段 {field}");
+                return;
+            }
+
+            property.floatValue = value;
+            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         static Material GetOrCreateMaterial(string name, Color color)

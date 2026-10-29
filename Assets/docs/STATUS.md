@@ -39,7 +39,7 @@ Unity 里菜单生成四个场景，按 Play 能进游戏，Console 打出配置
 | 项 | 怎么验的 | 结果 |
 |---|---|---|
 | Unity 编译 | Unity 自己产出三个程序集 | 0 错 0 警告，`Game.Runtime.dll` 链接 227 个引用 |
-| 场景生成 | 菜单跑到底 | 生成 Run(160m) / Test_Arena(40m) / Boot / MainMenu，Build Settings 自动写好 |
+| 场景生成 | 菜单跑到底 | 生成 Run(160m) / Test_Arena(40m) / Boot / MainMenu，Build Settings 自动写好；场景只含光照、地面、边界、相机、AppRoot、HUD |
 | 场景完整性 | 查 Run.unity 里 12 个 guid | 全部能解析到脚本、材质与 Cinemachine 组件，无 missing script |
 | Play 运行时 | 实际进 Play | Console 打出 `[Config] 加载成功 版本 741b4ba082a6｜角色 3｜武器 2｜旅伴 3｜道具 4｜敌人 3｜波次 3`，无异常 |
 | 玩家移动与冲刺 | 命令行跑 15 项断言 | 全通过：移速、对角线归一化、边界夹紧、冲刺位移、冷却、同帧多步去重、金币收支、生命比例 |
@@ -61,7 +61,7 @@ Unity 里菜单生成四个场景，按 Play 能进游戏，Console 打出配置
 
 ## 已知问题
 
-1. 场景由 SceneBuilder 生成并已进仓。改生成参数（地面尺寸、相机角度）后要重跑菜单，不要手改场景文件。这次玩家模块动了生成器，必须重跑一次，否则场景里没有 CameraTarget 和 PlayerView。
+1. 场景骨架由 `SceneBuilder` 一次性生成，之后手工维护。玩家、虚拟相机、相机目标点在运行时创建，改这些参数不用重建场景。预制体由 `PrefabBuilder` 生成一次，之后也归手工维护。这次结构改过，需要重跑一次 `Tools/Game/重建全部场景`。
 2. 输入用代码构建 ActionMap，改键要改代码。I4 做按键自定义时迁回 `.inputactions` 资产。
 3. 三个包（Input System / Cinemachine / Newtonsoft）首次打开需要联网下载。
 4. 没有任何美术资源，全部是 Unity 内置几何体加材质颜色。

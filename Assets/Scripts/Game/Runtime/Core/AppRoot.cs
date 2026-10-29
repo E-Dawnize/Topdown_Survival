@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Game.Config;
 using Game.Controllers;
 using Game.Core.Events;
@@ -9,21 +10,25 @@ using UnityEngine;
 namespace Game.Core
 {
     /// <summary>
-    /// 场景里的装配根。只有它能 new 系统、加载配置、持有游戏级引用。
+    /// 场景里的装配根。只有它加载配置、实例化预制体、持有游戏级引用。
     /// 其余代码通过构造注入拿到依赖，不查静态单例。
     /// </summary>
     [DefaultExecutionOrder(-1000)]
     public sealed class AppRoot : MonoBehaviour
     {
+        public const string PlayerPrefabId = "Player";
+
         public static AppRoot Instance { get; private set; }
 
         [SerializeField] bool _loadConfigOnAwake = true;
         [SerializeField] string _characterId = "Scavenger";
+        [SerializeField] UnitPrefabMap _prefabMap;
 
         public EventBus Events { get; private set; }
         public RunState Run { get; private set; }
         public ConfigDatabase Config { get; private set; }
         public InputService Input { get; private set; }
+        public UnitPrefabMap PrefabMap => _prefabMap;
         public ulong RunSeed { get; private set; }
 
         public PlayerModel Player { get; private set; }
@@ -53,7 +58,11 @@ namespace Game.Core
                 TryLoadConfig();
             }
 
-            CreatePlayer();
+            if (ConfigOk)
+            {
+                ValidateContent();
+                CreatePlayer();
+            }
         }
 
         void OnDestroy()
@@ -91,13 +100,47 @@ namespace Game.Core
             }
         }
 
+        /// <summary>
+        /// 配置表里的 Id 必须能在预制体映射里找到。玩家缺失是致命错误，
+        /// 敌人缺失先给警告——I1 阶段还有两个敌人没有预制体。
+        /// </summary>
+        void ValidateContent()
+        {
+            if (_prefabMap == null)
+            {
+                Debug.LogError("[AppRoot] 没有指定 UnitPrefabMap，玩家与敌人都实例化不出来。" +
+                               "先跑一次 Tools/Game/生成预制体");
+                return;
+            }
+
+            var missing = new List<string>();
+            foreach (EnemyDef enemy in Config.Enemies.Values)
+            {
+                if (!_prefabMap.Has(enemy.Id)) missing.Add("Enemy/" + enemy.Id);
+            }
+
+            if (missing.Count > 0)
+            {
+                Debug.LogWarning("[AppRoot] 以下 Id 没有对应预制体，刷到时会实例化失败:\n  " +
+                                 string.Join("\n  ", missing));
+            }
+        }
+
         void CreatePlayer()
         {
-            if (Config == null) return;
+            if (Config == null || _prefabMap == null) return;
 
             if (!Config.Characters.TryGetValue(_characterId, out CharacterDef def))
             {
                 Debug.LogError($"[AppRoot] 角色表里没有 '{_characterId}'");
+                return;
+            }
+
+            GameObject prefab = _prefabMap.Find(PlayerPrefabId);
+            if (prefab == null)
+            {
+                Debug.LogError($"[AppRoot] UnitPrefabMap 里没有 '{PlayerPrefabId}' 预制体，" +
+                               "先跑一次 Tools/Game/生成预制体");
                 return;
             }
 
@@ -115,7 +158,16 @@ namespace Game.Core
                 arenaHalf);
 
             PlayerController = new PlayerController(Player, Events);
-            PlayerView?.Bind(Player);
+
+            GameObject instance = Instantiate(prefab);
+            instance.name = PlayerPrefabId;
+
+            PlayerView view = instance.GetComponent<PlayerView>();
+            if (view != null)
+            {
+                view.Bind(Player);
+                PlayerView = view;
+            }
 
             Debug.Log($"[AppRoot] 玩家就绪 生命 {Player.MaxHP} 移速 {def.BaseMoveSpeed}" +
                       $" 冲刺 {Player.DashSpeed} 边界 ±{arenaHalf}");
@@ -123,6 +175,7 @@ namespace Game.Core
 
         public void BindPlayerView(PlayerView view)
         {
+            if (view == null) return;
             PlayerView = view;
             view.Bind(Player);
         }

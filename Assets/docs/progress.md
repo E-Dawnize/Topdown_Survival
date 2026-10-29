@@ -68,6 +68,15 @@ Unity 首次导入时出现过一次 `error CS2001: Source file 'Assets/Scripts/
 
 写的过程中修掉一个 bug：StartDash 只设了计时器没设速度，导致冲刺第一步人没动但事件已经发了。
 
+工程结构调整（按"预制体 + 最小场景"重做资源管理）：
+
+- 场景只留方向光、地面、边界墙、主相机、AppRoot、HUD 实例。虚拟相机、CameraTarget、玩家都在运行时创建，改参数不用重建场景。
+- `PrefabBuilder` 生成一次性的初始资源：Player、三个敌人占位、HudCanvas、UnitPrefabMap。生完就归手工维护，不再参与日常流程。
+- `HudView` 从代码搭 UI 改成预制体 + 序列化引用，布局在编辑器里拖，改字号不用重编译。
+- Id 到预制体的映射用 `UnitPrefabMap`（ScriptableObject 显式引用），不用 `Resources.Load` 按名字查。启动时校验：玩家缺失是致命错误，敌人缺失只警告，因为 I1 阶段还有两个敌人没做。
+
+第一次跑 PrefabBuilder 只生成了材质没有预制体。原因是它用 `System.IO.Directory.CreateDirectory` 建 `Assets/Prefabs/Units`，Unity 的 AssetDatabase 不认这个目录，`SaveAsPrefabAsset` 静默失败。改成 `AssetDatabase.CreateFolder` 逐级创建后正常。这个坑对所有往 Assets 下写新目录的编辑器脚本都成立。
+
 HUD 提前做了（原计划在 I2-9）：没有敌人时血条不会掉，所以加了 F2 扣血、F3 加金币两个调试键来验证 UI 是活的，等敌人接上后删掉。UI 用 uGUI + 代码生成，没走 TextMeshPro——项目还没导入 TMP Essentials，运行时建 TMP 文本会缺默认字体。中文字体在 Windows 上用系统字体动态加载，换平台要换方案。
 
 未验证：
