@@ -107,3 +107,10 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 保留本项目自定义的 VSCode 设置
+!/.vscode/settings.json
