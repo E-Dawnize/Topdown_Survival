@@ -18,5 +18,25 @@
     "Id": "EnemyDamageScalePerWave",
     "Value": 1.35,
     "Note": "敌人伤害每波倍率"
+  },
+  {
+    "Id": "ArenaHalfExtent",
+    "Value": 67.0,
+    "Note": "玩家可达区域的半边长 米"
+  },
+  {
+    "Id": "DashSpeedMultiplier",
+    "Value": 3.0,
+    "Note": "冲刺速度是移速的倍数"
+  },
+  {
+    "Id": "DashDuration",
+    "Value": 0.15,
+    "Note": "冲刺持续 秒"
+  },
+  {
+    "Id": "DashCooldown",
+    "Value": 2.0,
+    "Note": "冲刺冷却 秒"
   }
 ]

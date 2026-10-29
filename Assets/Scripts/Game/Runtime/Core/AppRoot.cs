@@ -1,6 +1,9 @@
 using Game.Config;
+using Game.Controllers;
 using Game.Core.Events;
+using Game.Model;
 using Game.Services;
+using Game.Views;
 using UnityEngine;
 
 namespace Game.Core
@@ -15,11 +18,17 @@ namespace Game.Core
         public static AppRoot Instance { get; private set; }
 
         [SerializeField] bool _loadConfigOnAwake = true;
+        [SerializeField] string _characterId = "Scavenger";
 
         public EventBus Events { get; private set; }
         public ConfigDatabase Config { get; private set; }
         public InputService Input { get; private set; }
         public ulong RunSeed { get; private set; }
+
+        public PlayerModel Player { get; private set; }
+        public PlayerController PlayerController { get; private set; }
+        public PlayerView PlayerView { get; private set; }
+        public CameraRig Camera { get; private set; }
 
         public bool ConfigOk { get; private set; }
         public string ConfigError { get; private set; }
@@ -41,6 +50,8 @@ namespace Game.Core
             {
                 TryLoadConfig();
             }
+
+            CreatePlayer();
         }
 
         void OnDestroy()
@@ -76,6 +87,46 @@ namespace Game.Core
                 Debug.LogError("[Config] 加载失败:\n" + e.Message);
                 return false;
             }
+        }
+
+        void CreatePlayer()
+        {
+            if (Config == null) return;
+
+            if (!Config.Characters.TryGetValue(_characterId, out CharacterDef def))
+            {
+                Debug.LogError($"[AppRoot] 角色表里没有 '{_characterId}'");
+                return;
+            }
+
+            float arenaHalf = Config.GetBalance("ArenaHalfExtent", 67f);
+            float dashMultiplier = Config.GetBalance("DashSpeedMultiplier", 3f);
+            float dashDuration = Config.GetBalance("DashDuration", 0.15f);
+            float dashCooldown = Config.GetBalance("DashCooldown", 2f);
+
+            Player = new PlayerModel(
+                def.BaseMoveSpeed,
+                def.BaseMoveSpeed * dashMultiplier,
+                dashDuration,
+                dashCooldown,
+                arenaHalf);
+
+            PlayerController = new PlayerController(Player, Events);
+            PlayerView?.Bind(Player);
+
+            Debug.Log($"[AppRoot] 玩家就绪 移速 {def.BaseMoveSpeed} 冲刺 {Player.DashSpeed}" +
+                      $" 边界 ±{arenaHalf}");
+        }
+
+        public void BindPlayerView(PlayerView view)
+        {
+            PlayerView = view;
+            view.Bind(Player);
+        }
+
+        public void BindCameraRig(CameraRig rig)
+        {
+            Camera = rig;
         }
     }
 }

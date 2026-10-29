@@ -115,6 +115,10 @@ SHEETS = [
             ["PriceGrowthPerWave", 0.1, "价格每波上浮比例"],
             ["EnemyHpScalePerWave", 1.9, "敌人血量每波倍率"],
             ["EnemyDamageScalePerWave", 1.35, "敌人伤害每波倍率"],
+            ["ArenaHalfExtent", 67, "玩家可达区域的半边长 米"],
+            ["DashSpeedMultiplier", 3.0, "冲刺速度是移速的倍数"],
+            ["DashDuration", 0.15, "冲刺持续 秒"],
+            ["DashCooldown", 2.0, "冲刺冷却 秒"],
         ],
     ),
 ]

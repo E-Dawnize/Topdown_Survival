@@ -2,6 +2,7 @@ using System.IO;
 using Cinemachine;
 using Game.Core;
 using Game.Services;
+using Game.Views;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -87,6 +88,8 @@ namespace Game.EditorTools
             var rootGo = new GameObject("AppRoot");
             rootGo.AddComponent<InputService>();
             rootGo.AddComponent<DebugOverlay>();
+            rootGo.AddComponent<RunLoop>();
+            CameraRig cameraRig = rootGo.AddComponent<CameraRig>();
             rootGo.AddComponent<AppRoot>();
 
             // 方向光
@@ -122,6 +125,21 @@ namespace Game.EditorTools
             player.GetComponent<Renderer>().sharedMaterial =
                 GetOrCreateMaterial("MAT_Player", new Color(0.85f, 0.87f, 0.92f));
             Object.DestroyImmediate(player.GetComponent<Collider>());
+            player.AddComponent<PlayerView>();
+
+            // 朝向指示：胶囊本身看不出朝向，加一个前伸的小方块
+            GameObject front = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            front.name = "Front";
+            front.transform.SetParent(player.transform, false);
+            front.transform.localPosition = new Vector3(0f, 0.15f, 0.42f);
+            front.transform.localScale = new Vector3(0.18f, 0.12f, 0.36f);
+            front.GetComponent<Renderer>().sharedMaterial =
+                GetOrCreateMaterial("MAT_PlayerFront", new Color(0.35f, 0.75f, 1f));
+            Object.DestroyImmediate(front.GetComponent<Collider>());
+
+            // 相机目标点：Cinemachine 跟它，由 CameraRig 每帧夹在场地内
+            var camTarget = new GameObject("CameraTarget");
+            camTarget.transform.position = new Vector3(0f, 0f, 0f);
 
             // 相机 + Cinemachine
             var camGo = new GameObject("Main Camera");
@@ -143,7 +161,7 @@ namespace Game.EditorTools
             vcamGo.transform.rotation = Quaternion.Euler(CameraTilt, 0f, 0f);
             CinemachineVirtualCamera vcam = vcamGo.AddComponent<CinemachineVirtualCamera>();
             vcam.Priority = 10;
-            vcam.Follow = player.transform;
+            vcam.Follow = camTarget.transform;
             vcam.m_Lens.Orthographic = true;
             vcam.m_Lens.OrthographicSize = OrthoSize;
             vcam.m_Lens.NearClipPlane = 0.3f;
@@ -155,6 +173,8 @@ namespace Game.EditorTools
             transposer.m_XDamping = 0.35f;
             transposer.m_YDamping = 0.0f;
             transposer.m_ZDamping = 0.35f;
+
+            cameraRig.Configure(camTarget.transform, cam, OrthoSize, CameraTilt, size * 0.5f);
 
             EditorSceneManager.SaveScene(scene, path);
             Debug.Log($"[SceneBuilder] 生成 {sceneName} ({size}×{size} 米)");

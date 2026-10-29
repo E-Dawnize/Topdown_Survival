@@ -159,6 +159,20 @@ namespace Game.Core.Events
         }
     }
 
+    public readonly struct PlayerDashed
+    {
+        public readonly float X;
+        public readonly float Z;
+        public readonly float Angle;
+
+        public PlayerDashed(float x, float z, float angle)
+        {
+            X = x;
+            Z = z;
+            Angle = angle;
+        }
+    }
+
     public readonly struct PlayerDied
     {
         public readonly float X;

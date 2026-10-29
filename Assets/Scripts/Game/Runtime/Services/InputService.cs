@@ -1,3 +1,4 @@
+using Game.Core;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -18,11 +19,12 @@ namespace Game.Services
         InputAction _aim;
         InputAction _pause;
 
-        public Vector2 MoveAxis { get; private set; }
-        public Vector2 AimScreenPosition { get; private set; }
-        public bool DashPressed { get; private set; }
-        public bool SkillPressed { get; private set; }
-        public bool PausePressed { get; private set; }
+        public InputSnapshot Last { get; private set; }
+        public Vector2 MoveAxis => Last.Move;
+        public Vector2 AimScreenPosition => Last.Aim;
+        public bool DashPressed => Last.DashPressed;
+        public bool SkillPressed => Last.SkillPressed;
+        public bool PausePressed => Last.PausePressed;
         public bool UiMode { get; private set; }
 
         public InputActionAsset Asset => _asset;
@@ -53,15 +55,20 @@ namespace Game.Services
             }
         }
 
-        /// <summary>RunLoop 每帧调一次。</summary>
-        public void Sample()
+        /// <summary>RunLoop 每帧调一次，返回本帧快照。</summary>
+        public InputSnapshot Sample()
         {
-            if (_move == null) return;
-            MoveAxis = _move.ReadValue<Vector2>();
-            AimScreenPosition = _aim.ReadValue<Vector2>();
-            DashPressed = _dash.WasPressedThisFrame();
-            SkillPressed = _skill.WasPressedThisFrame();
-            PausePressed = _pause.WasPressedThisFrame();
+            if (_move == null) return Last;
+
+            Last = new InputSnapshot
+            {
+                Move = _move.ReadValue<Vector2>(),
+                Aim = _aim.ReadValue<Vector2>(),
+                DashPressed = _dash.WasPressedThisFrame(),
+                SkillPressed = _skill.WasPressedThisFrame(),
+                PausePressed = _pause.WasPressedThisFrame(),
+            };
+            return Last;
         }
 
         /// <summary>进入 UI（商店/结算）时切 Map，避免战斗中按 E 触发界面。</summary>
