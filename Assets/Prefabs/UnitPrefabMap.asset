@@ -25,3 +25,6 @@ MonoBehaviour:
   - Id: Thrower
     Prefab: {fileID: 6762651262234497529, guid: 2affdb4375275ba4496d2a61b00b77a2,
       type: 3}
+  - Id: HudCanvas
+    Prefab: {fileID: 541602875926558877, guid: db593ac2e0c299543a287833462f9cef,
+      type: 3}

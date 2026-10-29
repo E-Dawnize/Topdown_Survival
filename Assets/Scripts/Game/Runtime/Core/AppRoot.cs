@@ -17,6 +17,7 @@ namespace Game.Core
     public sealed class AppRoot : MonoBehaviour
     {
         public const string PlayerPrefabId = "Player";
+        public const string HudPrefabId = "HudCanvas";
 
         public static AppRoot Instance { get; private set; }
 
@@ -34,6 +35,7 @@ namespace Game.Core
         public PlayerModel Player { get; private set; }
         public PlayerController PlayerController { get; private set; }
         public PlayerView PlayerView { get; private set; }
+        public HudView Hud { get; private set; }
         public CameraRig Camera { get; private set; }
 
         public bool ConfigOk { get; private set; }
@@ -62,6 +64,7 @@ namespace Game.Core
             {
                 ValidateContent();
                 CreatePlayer();
+                CreateHud();
             }
         }
 
@@ -171,6 +174,39 @@ namespace Game.Core
 
             Debug.Log($"[AppRoot] 玩家就绪 生命 {Player.MaxHP} 移速 {def.BaseMoveSpeed}" +
                       $" 冲刺 {Player.DashSpeed} 边界 ±{arenaHalf}");
+        }
+
+        void CreateHud()
+        {
+            if (_prefabMap == null) return;
+
+            GameObject prefab = _prefabMap.Find(HudPrefabId);
+            if (prefab == null)
+            {
+                Debug.LogError($"[AppRoot] UnitPrefabMap 里没有 '{HudPrefabId}'，屏幕上不会有 HUD");
+                return;
+            }
+
+            if (prefab.activeSelf)
+            {
+                Debug.LogWarning("[AppRoot] HUD 预制体根节点是激活的，首次 OnEnable 会早于注入。" +
+                                 "把预制体根节点设为 inactive");
+            }
+
+            GameObject instance = Instantiate(prefab, transform);
+            instance.name = HudPrefabId;
+
+            HudView view = instance.GetComponent<HudView>();
+            if (view == null)
+            {
+                Debug.LogError("[AppRoot] HUD 预制体上没有 HudView");
+                return;
+            }
+
+            view.Initialize(Events);
+            view.Bind(Player, Run);
+            instance.SetActive(true);
+            Hud = view;
         }
 
         public void BindPlayerView(PlayerView view)

@@ -1,4 +1,3 @@
-using Game.Core;
 using Game.Core.Events;
 using Game.Model;
 using UnityEngine;
@@ -11,7 +10,7 @@ namespace Game.Views
     /// 基础 HUD：血条、金币、波次、冲刺冷却。
     /// 布局在 HudCanvas 预制体里摆，这里只负责刷新数据。
     /// </summary>
-    public sealed class HudView : MonoBehaviour
+    public sealed class HudView : UiView
     {
         [SerializeField] Image _hpFill;
         [SerializeField] Text _hpText;
@@ -27,7 +26,6 @@ namespace Game.Views
 
         PlayerModel _player;
         RunState _run;
-        IEventBus _bus;
 
         void Awake()
         {
@@ -40,20 +38,17 @@ namespace Game.Views
             }
         }
 
-        void OnEnable()
+        /// <summary>由装配根在激活之前调用。</summary>
+        public void Bind(PlayerModel player, RunState run)
         {
-            AppRoot root = AppRoot.Instance;
-            if (root == null) return;
-            _player = root.Player;
-            _run = root.Run;
-            _bus = root.Events;
-            _bus?.Subscribe<CoinChanged>(OnCoinChanged);
+            _player = player;
+            _run = run;
+            Refresh();   // 先刷一次，避免激活后第一帧显示占位值
         }
 
-        void OnDisable()
+        protected override void SubscribeAll()
         {
-            _bus?.Unsubscribe<CoinChanged>(OnCoinChanged);
-            _bus = null;
+            On<CoinChanged>(OnCoinChanged);
         }
 
         void LateUpdate()
@@ -76,7 +71,7 @@ namespace Game.Views
             if (Keyboard.current.f3Key.wasPressedThisFrame && _run != null)
             {
                 _run.AddCoins(10);
-                _bus?.Publish(new CoinChanged(_run.Coins, 10));
+                Bus?.Publish(new CoinChanged(_run.Coins, 10));
                 ShowHint("调试：加 10 金币");
             }
         }

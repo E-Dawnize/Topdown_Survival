@@ -96,3 +96,14 @@ HUD 提前做了（原计划在 I2-9）：没有敌人时血条不会掉，所�
 删前的核对：4 个单位预制体、HudCanvas、UnitPrefabMap 里的 guid 引用共 16 个，全部能在项目或包内解析，无缺失。Run 场景里 HUD 是 prefab 实例（`!u!1001`），Player 与 vcam 只在实际运行时出现。
 
 要从零重建，从提交 `90301c2` 取回两个脚本，跑完再删。
+
+
+### UI 注入与订阅清理
+
+- 新增 `UiView` 基类：负责订阅登记与取消。子类在 `SubscribeAll()` 里用 `On<T>()` 注册，隐藏时基类统一退订，不用自己记。
+- `HudView` 改成继承 `UiView`，去掉 `OnEnable` 里查 `AppRoot.Instance` 的写法，改由装配根 `Initialize(bus)` + `Bind(player, run)`。
+- HUD 从"摆在场景里的 prefab 实例"改成"`AppRoot` 运行时实例化"，跟玩家一致。场景里现在只剩 8 个根对象：AppRoot、方向光、地面、四块墙、主相机。
+- `UnitPrefabMap` 加一条 `HudCanvas`，HUD 的预制体也从这张表拿，不再单独一个字段。
+- HUD 预制体根节点是 inactive，`AppRoot` 实例化后先 `Initialize` 再激活，保证首次 `OnEnable` 时依赖已就绪。基类里对漏注入的情况直接报错，不静默放行。
+
+一个已知的遗留：`HudView` 在 `Awake` 里替换字体（预制体用的是内置 LegacyRuntime，没有中文字形）。这一步依赖 `GetComponentsInChildren`，如果以后 HUD 结构变得很深，会慢一点，但只在实例化时跑一次。
