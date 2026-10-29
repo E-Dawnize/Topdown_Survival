@@ -18,7 +18,7 @@ namespace Game.Tests
 
         static PlayerController Make(out PlayerModel model, out EventBus bus)
         {
-            model = new PlayerModel(Speed, Speed * DashMultiplier, DashDuration, DashCooldown, Half);
+            model = new PlayerModel(100f, Speed, Speed * DashMultiplier, DashDuration, DashCooldown, Half);
             bus = new EventBus();
             return new PlayerController(model, bus);
         }

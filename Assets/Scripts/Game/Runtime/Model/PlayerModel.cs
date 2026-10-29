@@ -22,6 +22,9 @@ namespace Game.Model
 
         public PlayerState State;
 
+        public readonly float MaxHP;
+        public float HP;
+
         public readonly float MoveSpeed;
         public readonly float DashSpeed;
         public readonly float DashDuration;
@@ -31,9 +34,11 @@ namespace Game.Model
         public float DashTimer;
         public float DashCooldownTimer;
 
-        public PlayerModel(float moveSpeed, float dashSpeed, float dashDuration, float dashCooldown,
+        public PlayerModel(float maxHp, float moveSpeed, float dashSpeed, float dashDuration, float dashCooldown,
             float arenaHalfExtent)
         {
+            MaxHP = maxHp;
+            HP = maxHp;
             MoveSpeed = moveSpeed;
             DashSpeed = dashSpeed;
             DashDuration = dashDuration;
@@ -41,6 +46,8 @@ namespace Game.Model
             ArenaHalfExtent = arenaHalfExtent;
         }
 
+        public bool IsDead => HP <= 0f;
+        public float HpRatio => MaxHP > 0f ? Mathf.Clamp01(HP / MaxHP) : 0f;
         public bool IsDashing => DashTimer > 0f;
         public bool IsInvulnerable => DashTimer > 0f;
         public bool CanDash => DashCooldownTimer <= 0f && DashTimer <= 0f;

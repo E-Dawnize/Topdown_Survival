@@ -90,6 +90,7 @@ namespace Game.EditorTools
             rootGo.AddComponent<DebugOverlay>();
             rootGo.AddComponent<RunLoop>();
             CameraRig cameraRig = rootGo.AddComponent<CameraRig>();
+            rootGo.AddComponent<HudView>();
             rootGo.AddComponent<AppRoot>();
 
             // 方向光

@@ -21,6 +21,7 @@ namespace Game.Core
         [SerializeField] string _characterId = "Scavenger";
 
         public EventBus Events { get; private set; }
+        public RunState Run { get; private set; }
         public ConfigDatabase Config { get; private set; }
         public InputService Input { get; private set; }
         public ulong RunSeed { get; private set; }
@@ -44,6 +45,7 @@ namespace Game.Core
 
             Instance = this;
             Events = new EventBus();
+            Run = new RunState();
             Input = GetComponent<InputService>();
 
             if (_loadConfigOnAwake)
@@ -105,6 +107,7 @@ namespace Game.Core
             float dashCooldown = Config.GetBalance("DashCooldown", 2f);
 
             Player = new PlayerModel(
+                def.BaseHP,
                 def.BaseMoveSpeed,
                 def.BaseMoveSpeed * dashMultiplier,
                 dashDuration,
@@ -114,8 +117,8 @@ namespace Game.Core
             PlayerController = new PlayerController(Player, Events);
             PlayerView?.Bind(Player);
 
-            Debug.Log($"[AppRoot] 玩家就绪 移速 {def.BaseMoveSpeed} 冲刺 {Player.DashSpeed}" +
-                      $" 边界 ±{arenaHalf}");
+            Debug.Log($"[AppRoot] 玩家就绪 生命 {Player.MaxHP} 移速 {def.BaseMoveSpeed}" +
+                      $" 冲刺 {Player.DashSpeed} 边界 ±{arenaHalf}");
         }
 
         public void BindPlayerView(PlayerView view)
