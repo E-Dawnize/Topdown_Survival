@@ -61,7 +61,7 @@ Unity 里菜单生成四个场景，按 Play 能进游戏，Console 打出配置
 
 ## 已知问题
 
-1. 场景骨架由 `SceneBuilder` 一次性生成，之后手工维护。玩家、虚拟相机、相机目标点在运行时创建，改这些参数不用重建场景。预制体由 `PrefabBuilder` 生成一次，之后也归手工维护。这次结构改过，需要重跑一次 `Tools/Game/重建全部场景`。
+1. 场景和预制体是唯一真源，手工维护。生成它们用的一次性脚本已经删了，需要从零重建的话，从提交 `90301c2` 里取回 `Assets/Scripts/Game/Editor/` 下的 `SceneBuilder.cs` 与 `PrefabBuilder.cs`，跑完再删。玩家、虚拟相机、相机目标点仍然是运行时创建，改这些参数不用碰场景。
 2. 输入用代码构建 ActionMap，改键要改代码。I4 做按键自定义时迁回 `.inputactions` 资产。
 3. 三个包（Input System / Cinemachine / Newtonsoft）首次打开需要联网下载。
 4. 没有任何美术资源，全部是 Unity 内置几何体加材质颜色。

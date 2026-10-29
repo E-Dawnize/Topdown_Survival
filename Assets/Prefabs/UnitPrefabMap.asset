@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b01c0dfafc1428aa2bda8975d3aa376b, type: 3}
+  m_Name: UnitPrefabMap
+  m_EditorClassIdentifier: 
+  _entries:
+  - Id: Player
+    Prefab: {fileID: 2373766348291986862, guid: bcd5a68d0e2177943863dec4d561ce3b,
+      type: 3}
+  - Id: Crawler
+    Prefab: {fileID: 3333746012443719407, guid: 4023c7bbb584db24c85798af165cc26c,
+      type: 3}
+  - Id: Charger
+    Prefab: {fileID: 3780943318035399627, guid: bda56a420f7014d408247098ccb6bc58,
+      type: 3}
+  - Id: Thrower
+    Prefab: {fileID: 6762651262234497529, guid: 2affdb4375275ba4496d2a61b00b77a2,
+      type: 3}

@@ -87,3 +87,12 @@ HUD 提前做了（原计划在 I2-9）：没有敌人时血条不会掉，所�
 ## I1 之后
 
 未开始。
+
+
+### 生成器已删除
+
+场景与预制体生成成功后，`SceneBuilder.cs` 与 `PrefabBuilder.cs` 已从仓库删除，只剩 `ConfigMenu.cs`（导表入口，日常要用）。
+
+删前的核对：4 个单位预制体、HudCanvas、UnitPrefabMap 里的 guid 引用共 16 个，全部能在项目或包内解析，无缺失。Run 场景里 HUD 是 prefab 实例（`!u!1001`），Player 与 vcam 只在实际运行时出现。
+
+要从零重建，从提交 `90301c2` 取回两个脚本，跑完再删。
