@@ -8,12 +8,14 @@
 
 - [游戏设计文档](Assets/docs/GDD.md)
 - [技术方案](Assets/docs/TECH_DESIGN.md)
+- [迭代方案](Assets/docs/ITERATION_PLAN.md)
 
 ## 环境
 
-- Unity 2022.3.34f1 LTS
-- 渲染管线：URP 2D（Assets/Settings 已配置）
-- 需要手动添加的包：`com.unity.inputsystem`
+- Unity 2022.3.34f1c1
+- 渲染：3D URP，正交斜视 2.5D（Assets/Settings 已配置）
+- 待装：`com.unity.inputsystem` 1.7.0、`com.unity.cinemachine` 2.9.7、`com.unity.nuget.newtonsoft-json` 3.2.1
+- 导表：Python 3.10（仅标准库）+ `tools/export_config.py`
 
 ## 本地运行
 

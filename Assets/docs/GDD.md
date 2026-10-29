@@ -1,6 +1,8 @@
-# 项目名：Topdown Survival（2D 俯视角生存）
+# 项目名：Topdown Survival（2.5D 俯视角生存）
 
-文档版本 v0.1 · Unity 2022.3.34f1 / URP 2D
+文档版本 v0.2 · Unity 2022.3.34f1c1 / URP 3D（正交斜视 2.5D）
+
+技术实现见 [技术方案](TECH_DESIGN.md)，开发节奏见 [迭代方案](ITERATION_PLAN.md)。
 
 > 玩法框架参考《绝区零》的「怪奇旅伴」小游戏（俯视角自动战斗 + 波次 + 商店 + 旅伴养成），角色名、数值、道具、敌人全部为本项目原创设定，不复制原作素材与具体数值。
 
@@ -344,53 +346,19 @@
 
 结算：分数、存活时间、击杀、最高单次伤害、本局 DPS 曲线（折线图，横轴时间，纵轴 DPS）。
 
-## 15. 技术方案
+## 15. 技术概要
 
-- 引擎：Unity 2022.3.34f1 LTS，URP 2D Renderer
-- 输入：`com.unity.inputsystem`（需加入 manifest）
-- 渲染：Sprite Renderer + 单张 SpriteAtlas，全部使用同一个 SpriteLit 材质，禁止逐对象材质实例化
-- 敌人 200+ 的实现路线：不使用 Rigidbody2D 与 Collider2D 做敌人间碰撞。自写空间哈希（格子 2 单位），每帧只对邻近 9 格做距离检测。碰撞层只保留玩家/子弹/拾取物
-- 对象池：敌人、子弹、金币、伤害跳字、粒子全部预分配，波次切换时不清空池
-- 数据驱动：所有角色、旅伴、道具、敌人、波次配置放 `ScriptableObject`，策划表 → SO 的导入工具做一次就够
-- 存档：`JsonUtility` + `persistentDataPath`
+场景是 3D，玩法在 XZ 平面上，正交斜视相机做 2.5D 呈现，美术用简单几何体。实体是纯 C# 数据，表现层是 3D 物体。
 
-### 15.1 目录规划
+实现细节、选型理由、性能预算全部在 [技术方案](TECH_DESIGN.md) 里，本节不再重复，避免两份文档互相矛盾。设计侧只需要记住三条约束：
 
-```
-Assets/
-  Scenes/        MainMenu, Run, Test_Arena
-  Scripts/
-    Core/        GameFlow, RunState, TimeScale, ObjectPool
-    Player/      PlayerController, PlayerStats, Aiming, Dodge
-    Combat/      DamageInfo, WeaponBase, Projectile, HitDetection
-    Units/       UnitBase, EnemyBase, CompanionBase, Boss*
-    Systems/     WaveDirector, ShopSystem, ItemSystem, SynergySystem
-    Data/        ScriptableObjects + 配置表定义
-    UI/          HUD, ShopUI, ResultUI
-    Save/        SaveSystem
-  Art/           Sprites, Atlas, VFX
-  Audio/
-  Settings/      URP 配置（已有）
-  docs/          设计文档（本文件所在）
-```
+1. 实体高度不超过 1 米，任何高大装饰物只能在场地边缘且不参与战斗。
+2. 场地 160×160 米，战斗区 140×140，玩家和敌人都被夹在边界内。
+3. 数值全部来自 Excel，改数值不需要改代码。
 
-### 15.2 关键系统依赖
+## 16. 开发节奏
 
-`WaveDirector` 只依赖 `RunState` 与 `ObjectPool`，不认识 UI。
-`ShopSystem` 只读 `RunState` 与 `ItemDatabase`，通过事件通知 UI。
-`PlayerStats` 是所有属性加成的唯一计算入口，道具/羁绊/药品都往里写 modifier，不直接改数值。这是全项目最重要的约束，破坏它后面所有平衡都会算不清。
-
-## 16. 开发里程碑
-
-| 阶段 | 内容 | 完成标准 |
-|---|---|---|
-| M1 骨架（1） | 场景、移动、自动开火、1 种敌人、对象池 | 场上 100 敌人不掉帧，能打死 |
-| M2 循环（2） | 波次、金币、掉落、商店骨架、1 个旅伴 | 能完整跑完 5 波（数值随便填） |
-| M3 内容（3） | 6 角色、10 旅伴、18 道具、7 敌人、2 BOSS | 属性系统全部走 modifier，能出第一版平衡 |
-| M4 打磨（4） | 打击感、音频、结算、存档、局外解锁 | 可对外发版 |
-| M5 扩展 | 无尽模式、难度 2–5、挑战词条 | — |
-
-括号内是相对工期单位，不折算成人天。
+迭代拆分与验收标准见 [迭代方案](ITERATION_PLAN.md)。游戏设计侧的完整可玩节点是：迭代 1 结束能在一个测试场里活下来，迭代 2 结束能跑完完整的 5 波，迭代 3 结束内容齐全，迭代 4 结束可以给外部人玩。
 
 ## 17. 待定与风险
 
@@ -398,7 +366,7 @@ Assets/
 - 布袋这类"不能移动"的角色在移动端触屏操作下体验极差，需要单独做拖拽虚拟摇杆的替代方案
 - 商店 6 格卡片的悬停对比在触屏上无法实现，需要改成点击展开
 - 波次时长固定 180s 会让熟练玩家觉得拖，后续考虑做成"清怪达标即提前结束"
-- 金色道具与祭坛叠加后可能打破终局，第 5 波 BOSS 的动态血量只能缓解不能解决，需要在 M3 后做一轮真人复测
+- 金色道具与祭坛叠加后可能打破终局，第 5 波 BOSS 的动态血量只能缓解不能解决，需要在迭代 3 后做一轮真人复测
 
 ---
 

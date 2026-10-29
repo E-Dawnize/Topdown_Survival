@@ -1,482 +1,603 @@
-# 技术方案 v0.1
+# 技术方案 v0.2
 
-配套文档：[游戏设计文档](GDD.md)
+配套文档：[游戏设计文档](GDD.md) · [迭代方案](ITERATION_PLAN.md)
 
 Unity 2022.3.34f1c1（中文版）/ URP 14.0.11
 
 ---
 
-## 0 当前工程的实际状态
+## 0 版本变更
 
-写方案前先确认过的事实，后面所有决策基于它们：
+v0.2 依据决策重写，与 v0.1 的差异：
 
-| 项 | 现状 | 影响 |
+| 项 | v0.1 | v0.2（已确认） |
 |---|---|---|
-| 渲染管线 | URP 14.0.11，asset 里 `m_RendererType: 1`，即 **Universal Renderer（3D）** | 需要切到 2D Renderer 才能用 Light2D |
-| 场景 | `Assets/Scenes/SampleScene.unity`，URP 模板示例场景 | M1 重建 |
-| 脚本 | 只有空的 `GameFlow.cs`，落在 Assembly-CSharp | 需要建 asmdef |
-| 输入 | `activeInputHandler: 0`，旧 Input Manager | 新手柄支持差，要换 |
-| 颜色空间 | Linear | 已符合预期，不改 |
-| 包 | 无 Input System、无 Addressables、无 Cinemachine | 按需加 |
-| Burst / Mathematics | 已随 URP 装上（1.8.15 / 1.2.6） | 暂不使用 |
-| .NET | .NET Standard 2.1 | 可用 Span、System.Memory |
+| 渲染 | 切 URP 2D Renderer | **保持 3D URP，正交斜视做 2.5D** |
+| 美术单元 | Sprite | **3D 简单几何体** |
+| 相机 | 手写跟随 + 震屏 | **Cinemachine** |
+| 场景 | 无边界 | **有边界的大竞技场** |
+| 架构 | 分层（模拟/表现） | **MVC + 事件总线** |
+| 配置 | ScriptableObject | **Excel → JSON → POCO** |
+| ECS | 否决 | **留待实测，写清触发条件** |
+| 武器 | 只提 `WeaponInstance` | **弓箭 / 砍刀两套行为 + 可扩展行为接口 + buff 预留** |
 
-一句话结论：这不是一个可以"直接开始写玩法"的工程，M1 的前半天是工程配置，不是功能开发。
+v0.1 里仍然有效的部分：主循环顺序、空间哈希、伤害管线、属性修正、随机分三流、对象池策略、性能预算方法。
 
 ## 1 目标与非目标
 
 目标：
 
-1. 1080p 60fps，同屏 200 敌人 + 400 子弹 + 300 粒子的稳定表现。
-2. 改数值不改代码、不重编译。策划在 Inspector 里能直接调。
-3. 核心逻辑（伤害、属性、商店抽卡、波次）可在 EditMode 测试里单独跑，不依赖场景。
-4. 一局的完整结果可复现：同一种子，同一串输入，同样结果。
+1. 1080p 60fps，同屏 200 敌人 + 400 投射物 + 300 粒子。
+2. 数值全在 Excel 里，改数值只跑一次导表，不重编译、不打开 Unity。
+3. 逻辑可脱离场景在 EditMode 测试（伤害、属性、抽卡、波次、buff 叠算）。
+4. 一局可复现：固定种子 + 固定输入序列 = 相同结果。
+5. 武器与 buff 是数据驱动的可扩展模块，加一把新武器只写一个行为类、填一行表。
 
-初版明确不做：网络与联机、录像回放、DOTS/ECS、自定义后处理、Addressables 分包、移动端适配（M4 再评估）、本地化多语言（数据结构留了口子，但不实现）。
+非目标（本版本不做）：联机、回放、移动端、Addressables 分包、自定义后处理、本地化多语言。
 
-## 2 关键技术选型
+## 2 世界与渲染
 
-| 决策点 | 选择 | 否决的 | 理由 |
+### 2.1 坐标约定
+
+- 玩法平面是 **XZ 平面**，Y 是高度。地面在 `y = 0`。
+- 1 单位 = 1 米。玩家移速 5 米/秒。
+- 所有实体根节点贴地（`y = 0`），高度不超过 1 米。玩家胶囊 1.0 米高，普通敌人 0.6 米。
+- 所有距离判定只算 XZ，忽略 Y。写一个 `Vector2 XZ(Vector3)` 的扩展方法，所有模拟层代码只用 Vector2。
+
+为什么不是 XY：3D 场景里用 XZ 做地面平面，方向光、阴影、地面材质都能自然工作；XY 平面在 3D 场景里会让"地面"变成一堵墙，光照和阴影全要造假。
+
+### 2.2 相机
+
+两台相机，都归一个 `CinemachineBrain` 管。
+
+| 相机 | 用途 | 参数 |
+|---|---|---|
+| `vcam_Follow` | 日常跟随 | 正交 size 7，旋转 `(50, 0, 0)`，Transposer 跟随偏移 `(0, 23, -19.3)`，Aim = None，X 轴死区 2 米 / Y 轴死区 0 |
+| `vcam_Boss` | BOSS 战拉远 | 正交 size 10，跟随 BOSS 与玩家的中点 |
+| `vcam_Menu` | 结算/商店静帧 | 固定在场地中心上方 |
+
+正交而不是透视，理由：判定在平面上，正交的远近不缩放，视觉和判定一致；透视会让屏幕边缘的敌人看起来更近、实际判定更远，玩家会觉得"明明打到了却没打到"。斜视角度 50° 给一点立体感，同时地面占屏比例够大。
+
+视角带来的遮挡问题：50° 斜视下，高于地面的物体向上投影约 `高 × 0.77`。因此规则是"所有实体都不许高过 1 米，任何高大装饰物（树、柱子）只能放在场地边缘且不参与战斗"。
+
+震屏走 Cinemachine Impulse：`CinemachineImpulseSource` 挂在攻击者上，`GenerateImpulse(强度)`。普通命中不震，暴击 0.1、BOSS 受击 0.2、BOSS 落地 0.4。
+
+相机位置的边界 clamp 自己做，约 30 行，不用 `CinemachineConfiner3D`。原因：正交相机的 confiner 在 2.9 里对 bounding volume 的贴合计算是按透视 FOV 推的，正交下边缘会穿出场地，试过 Confiner3D 的项目最后都改成手 clamp。
+
+### 2.3 光照与材质
+
+- 一盏方向光，`rotation (50, -30, 0)`，与相机同向偏移，软阴影，阴影距离 40 米。
+- 材质只允许三种：
+  - `MAT_Lit`（URP/Lit，Smoothness 0.1）：玩家、敌人、旅伴、地面。受光 + 投影，有体积感。
+  - `MAT_Unlit`（URP/Unlit）：投射物、特效、拾取物、UI 世界元素。不受光，保证可读性。
+  - `MAT_Ground`（URP/Lit，带网格纹理）：地面，一张平铺的网格贴图让移动有参照。
+- 颜色区分靠材质颜色参数，靠 `MaterialPropertyBlock` 而不是给每个对象 new 材质。用 MPB 时 SRP Batcher 不会断，`renderer.SetPropertyBlock` 每帧一次。
+- 后处理：Bloom（阈值 1.1）+ Vignette（0.25）+ 轻微 Color Adjustments。低画质档关 Bloom。
+- 三档 Quality 目前各自引用一个 URP asset（HighFidelity / Balanced / Performant）。这三份配置要在迭代 0 对齐（阴影、后处理、MSAA 一致），否则切画质时视觉会跳。
+
+### 2.4 渲染顺序与可读性
+
+3D 场景没有 Sorting Layer 那套便利，靠这几条保证读图：
+
+1. 玩家永远在敌人上方可见：玩家材质开 `ZTest Always` 的描边子材质（一个二次渲染的壳，放大约 5%），或者简单点用 Outline 后处理。初版选前者，实现便宜。
+2. 敌方投射物用高饱和冷色，玩家投射物用暖色，两者不共用色板。
+3. 地面网格让"移动"可见，避免纯色地面看不出速度。
+4. 所有实体底部加一个 0.05 米厚的深色圆盘/方块接触阴影，关掉真实阴影也能看出落点。真实阴影保留，两者叠加不冲突。
+
+## 3 场景与边界
+
+竞技场 `160 × 160` 米，玩家的有效战斗区 `140 × 140`，四周留 10 米缓冲。
+
+- 逻辑边界：`PlayerSystem` 和敌人 AI 出口处 clamp `[-70, 70]`。超出直接夹回，不做反弹。
+- 视觉边界：场地外一圈 8 米宽的暗色渐隐带（一张环形网格 + 渐隐材质），再外面是纯黑。玩家能看见"到头了"，但看不清外面有什么。
+- 相机不越界：相机目标点 clamp 到 `[-52, 52]`，保证正交视野（24.9 × 18.3 米）不会露出场地边缘之外。
+- 刷怪永远在相机视野之外、场地之内：以玩家为中心的环形区域，半径 14–18 米，角度随机，超出场地边界的候选点直接重掷（最多 8 次，都失败就允许刷在场内边缘）。
+
+为什么是 160 米：射程 6 米、移速 5 米/秒、一波 180 秒。玩家横穿场地需要 32 秒，够大，但同时不至于让"跑图"变成主要玩法。这个数值在迭代 1 用实际手感校准。
+
+## 4 输入
+
+新 Input System，`InputActionAsset` 一个，两个 Map：
+
+| Map | Action | 类型 | 键位 |
 |---|---|---|---|
-| 渲染管线 | URP **2D Renderer**（Renderer2DData） | 保持 Universal Renderer | 2D 渲染路径专为 Sprite 设计，支持 Light2D 与 2D 阴影；3D 路径下 Sprite 能画，但没有光照体系，后期加灯要返工 |
-| 光照 | 只用少量 Light2D（玩家灯、爆炸光、BOSS 黑暗战），敌人与子弹一律 unlit | 全场景受光 | 2D 光照开销随"光源数 × 受光精灵数"增长，200 个受光精灵上不了 60fps |
-| 模拟架构 | 单个 MonoBehaviour 驱动 + 纯 C# 系统类，实体是数据不是 MonoBehaviour | DOTS/ECS、每实体一个 Update | 200 实体远未到 ECS 的收益线；ECS 的调试与迭代成本对一个 15 分钟体量的游戏不成比例 |
-| 碰撞 | 自写圆形距离判定 + 均匀网格空间哈希 | 全量 PhysX 2D | 400 子弹 × 200 敌人若走 Collider2D，物理步进与回调开销不可控，且 GC 抖动难压 |
-| 输入 | 新 Input System（1.7.x） | 旧 Input Manager | 手柄/键鼠热插拔、Action 与 UI 分离、设备切换不用写 if |
-| UI | uGUI + TextMeshPro | UI Toolkit | 2022.3 的运行时 UI Toolkit 在动画、拖拽、复杂自适应布局上弱于 uGUI，商店卡片需要这些 |
-| 配置数据 | ScriptableObject + 字符串 Id | JSON / CSV 直接读 | SO 有 Inspector 编辑、引用校验、编译期资源引用；CSV 转换工具 M3 再补 |
-| 存档 | JsonUtility + `persistentDataPath` + schema 版本号 | PlayerPrefs / SQLite | 结构简单，需要版本迁移，不需要事务 |
-| 随机 | 自写 xorshift128，拆两条流（局内 / 局外） | `UnityEngine.Random` | 全局静态状态无法拆流、无法独立复现 |
-| 对象池 | 自写薄封装（约 80 行），内部 `Stack<T>` | `UnityEngine.Pool.ObjectPool<T>` | 需要"容量满时拒收而非无限扩容"这种策略，内置类的默认行为要绕过 |
-| 音频 | AudioSource 池 + 同帧同音源限流 | FMOD / Wwise | 音源数量与需求都小，中间件只会增加构建复杂度 |
-| 动画 | Sprite 序列帧 + 代码驱动（Tween 自写 40 行） | Animator / DOTween | Animator 在 200 个实体上开销明显；Tween 的需求只有位移、缩放、透明度 |
-| 字体 | TMP SDF，中文用常用 3500 字子集 | 全字库 SDF | 全字库 SDF 图集会膨胀到几十 MB，且动态生成有卡顿 |
-| 版本控制 | git + `.gitattributes`（UnityYAMLMerge 驱动） | git-lfs（暂不启用） | 当前没有大二进制；等有了音频和大图再开 LFS，避免协作者多一步安装 |
+| Player | Move | Value/Vector2 | WASD / 左摇杆 |
+| Player | Dash | Button | Space / A |
+| Player | Skill | Button | E / RB |
+| Player | Aim | Value/Vector2 | 鼠标 / 右摇杆 |
+| Player | Pause | Button | Esc / Start |
+| UI | Navigate / Submit / Cancel / Point | — | 标准 UI action |
 
-### 2.1 关于渲染管线切换
+- `InputService` 是唯一接触 `InputActionAsset` 的类，对外只暴露 `Vector2 MoveAxis`、`bool DashPressed`、`Vector2 AimDirection` 等属性。模拟层永远不引用 `UnityEngine.InputSystem`。
+- 采样在 `RunLoop` 第 1 步，一帧只采一次，写进 `InputSnapshot` struct。
+- UI 与游戏 action 分 Map，进商店时切 Map，避免战斗中按 E 触发 UI。
 
-工程现在用的是 3D 模板的 `UniversalRendererData`。切换动作：
+## 5 架构：MVC + 事件总线
 
-1. `Assets/Settings/` 下新建 Renderer2DData，命名 `URP-2D-Renderer`。
-2. 新建 URP Asset 指向它（或改现有 asset 的 `m_RendererType` 为 2 并换 renderer 列表）。
-3. `ProjectSettings > Graphics > Scriptable Render Pipeline Settings` 指向新的 URP Asset。
-4. Quality 里三个档位都指向它，避免切画质时 2D 光照消失。
+### 5.1 三层职责
 
-旧的 3D asset 保留不删，方便回退对比。这个操作要在编辑器里做，手改 YAML 的 `m_RendererType` 和 renderer 引用容易把 asset 弄坏——M1 开头的第一步，不省。
+| 层 | 内容 | 允许 | 禁止 |
+|---|---|---|---|
+| **Model** | `RunState`、`UnitModel`、`StatBlock`、`BuffContainer`、`ConfigDatabase`、`Rng` | 纯 C#，只用 `UnityEngine.Mathf/Vector2` | `MonoBehaviour`、`Transform`、`Instantiate`、`GetComponent`、访问 UI |
+| **View** | `UnitView`、`HudView`、`ShopView`、`DamageNumberView`、`AudioView`、`VfxSpawner` | 订阅事件、读 Model、改自己的显示状态 | 写 Model、调用系统方法、反向发命令（只能通过 Controller 暴露的命令接口） |
+| **Controller** | `InputController`、`PlayerController`、`CombatController`、`WaveController`、`ShopController`、`RunController` | 调 Model 的方法、发事件、发命令 | 持有 View 的具体类型引用、直接改 `Transform` |
 
-### 2.2 相机与单位约定
+装配只在一处：`AppRoot`（场景里的一个空物体）持有一切对象的构造与注入。除此之外没有任何地方 new 系统或查单例。
 
-- 1 Unity 单位 = 1 米，玩家移速 5 米/秒。
-- 正交相机 `orthographicSize = 6`，16:9 下可见高度 12 米、宽 21.3 米。
-- 敌人从距玩家 13–14 米的位置刷出（屏幕外），与 GDD 的刷怪规则一致。
-- PPU = 100，**不做 Pixel Perfect**。像素风如果要上，单独引入 Pixel Perfect Camera + 整数缩放，且要重做全部尺寸，代价不小，需要先定美术方向。
-
-### 2.3 时间与步长
-
-模拟用固定步长 1/60 秒累加，每帧最多跑 3 步（防死亡螺旋），渲染不做插值。
-
-为什么不插值：这是自动战斗游戏，1 帧的位置精度不影响手感，插值反而要给每个实体存上一帧位置，多一份状态和复制开销。为什么不直接用 FixedUpdate：需要控制"一帧最多几步"和在一步内保证执行顺序稳定，自己写累加器更直接。
-
-## 3 模块清单
-
-行数是量级估计，用来判断拆分粒度，不是承诺。
-
-### 3.1 入口与流程
-
-| 模块 | 职责 | 依赖 | 阶段 | 量级 |
-|---|---|---|---|---|
-| `Boot` | 初始化服务、加载配置、进主菜单 | 全部服务 | M1 | 60 |
-| `AppState` | 主菜单 / 选人 / 局内 / 结算 的状态机 | Boot | M1 | 100 |
-| `RunState` | 一局的全部数据：金币、波次、计时、旅伴列表、道具列表、统计、种子 | StatBlock, Rng | M1 | 200 |
-| `RunLoop` | 唯一的每帧入口，按固定顺序驱动所有系统 | 所有系统 | M1 | 120 |
-| `SceneFlow` | 场景加载与过渡 | AppState | M2 | 60 |
-
-### 3.2 模拟
-
-| 模块 | 职责 | 依赖 | 阶段 | 量级 |
-|---|---|---|---|---|
-| `PlayerSystem` | 玩家输入采样、移动、冲刺、主动技能 | InputService, StatBlock | M1 | 250 |
-| `CompanionSystem` | 旅伴跟随、开火、升级 | Unit, WeaponInstance | M2 | 200 |
-| `EnemySystem` | 敌人注册表、AI tick、刷怪接收 | SpatialGrid | M1 | 300 |
-| `ProjectileSystem` | 子弹生命周期、移动、命中判定 | SpatialGrid, DamageResolver | M1 | 200 |
-| `PickupSystem` | 金币/心/宝箱吸附与拾取 | 玩家位置 | M2 | 100 |
-| `SpatialGrid` | 均匀网格空间哈希，`QueryCircle` | 无 | M1 | 150 |
-| `DamageResolver` | 闪避、护甲、暴击、扣血、触发回调 | StatBlock | M1 | 180 |
-| `WaveDirector` | 波次状态机、刷怪配额、BOSS 调度 | EnemySystem | M2 | 250 |
-| `TriggerSystem` | 道具触发型效果（受击、击杀、闪避、定时） | 事件 | M3 | 200 |
-
-### 3.3 内容
-
-| 模块 | 职责 | 依赖 | 阶段 | 量级 |
-|---|---|---|---|---|
-| `Unit` | 单位基类：坐标、朝向、HP、StatBlock、状态位 | StatBlock | M1 | 150 |
-| `EnemyBehaviour` | 7 种敌人行为（追击、冲锋、抛射、分裂、护盾、精英、BOSS） | Unit | M1–M3 | 600 |
-| `CompanionBehaviour` | 10 种旅伴行为 + 武器绑定 | Unit, WeaponInstance | M2 | 400 |
-| `WeaponInstance` | 冷却、索敌、开火、弹道展开 | ProjectileSystem | M1 | 180 |
-| `ItemEffect` | 18 件道具的效果实现（属性型 / 触发型 / 经济型 / 特殊型） | StatBlock, TriggerSystem | M3 | 500 |
-| `SynergyResolver` | 阵营计数与羁绊生效/失效 | RunState | M2 | 120 |
-| `ShopSystem` | 抽卡、去重、保底、价格、刷新、买卖 | ItemDatabase, RunState | M2 | 300 |
-| `AltarSystem` | 祭坛献祭与结算 | RunState | M3 | 120 |
-| `BossController` | 两场 BOSS 的阶段与弹幕 | Unit | M3 | 400 |
-
-### 3.4 表现
-
-| 模块 | 职责 | 依赖 | 阶段 | 量级 |
-|---|---|---|---|---|
-| `UnitView` | 把模拟数据同步到 Transform/Sprite，8 向朝向 | 无 | M1 | 150 |
-| `HitFeedback` | 闪白、击退、hitstop、震屏 | CameraRig | M2 | 150 |
-| `DamageNumberPool` | 伤害跳字，同屏上限 40 | 池 | M2 | 120 |
-| `CameraRig` | 跟随、震屏、缩放 | 无 | M1 | 120 |
-| `AudioBus` | 音源池、限流、随机变调 | 无 | M3 | 150 |
-| `HUD` | 血条、金币、波次、CD | RunState | M2 | 250 |
-| `ShopUI` | 卡片、价格、对比、刷新 | ShopSystem | M2 | 350 |
-| `ResultUI` | 结算、DPS 曲线 | RunState | M3 | 250 |
-
-### 3.5 数据与服务
-
-| 模块 | 职责 | 依赖 | 阶段 | 量级 |
-|---|---|---|---|---|
-| `ScriptableObjects` | CharacterDef / CompanionDef / ItemDef / EnemyDef / WaveDef / BossDef | 无 | M1 | 400 |
-| `ItemDatabase` | 全道具索引、按品质分组、权重表 | SO | M2 | 100 |
-| `SaveSystem` | 读写、schema 迁移、原子写 | 无 | M3 | 150 |
-| `MetaProgress` | 解锁条件判定、累计统计 | SaveSystem | M3 | 150 |
-| `InputService` | Input System 封装，对外暴露 `MoveAxis` / `DashPressed` / `SkillPressed` | Input System | M1 | 120 |
-| `DebugOverlay` | FPS、实体数、各系统耗时、GC、种子 | 全部 | M1 | 200 |
-
-合计约 7000–8000 行量级。这个数字会飘，别拿它排期。
-
-## 4 分层与依赖规则
+### 5.2 依赖方向
 
 ```
-┌─────────────────────────────────────────────┐
-│ 表现层  UnitView / HUD / ShopUI / Audio     │  可以读模拟层
-│         HitFeedback / CameraRig / VFX       │  不得反向调用
-└───────────────────▲─────────────────────────┘
-                    │ 只通过事件
-┌───────────────────┴─────────────────────────┐
-│ 模拟层  RunLoop / *System / DamageResolver   │  纯 C#，不碰 Transform
-│         SpatialGrid / RunState / StatBlock   │  不 Instantiate，不查 UI
-└───────────────────▲─────────────────────────┘
-                    │ 只读
-┌───────────────────┴─────────────────────────┐
-│ 数据层  ScriptableObject 定义 + 索引         │  运行时不写入
-└─────────────────────────────────────────────┘
+        ┌─────────────┐
+        │  AppRoot    │  装配，唯一知道全部的地方
+        └──────┬──────┘
+               │ 注入
+   ┌───────────┼─────────────┐
+   ▼           ▼             ▼
+Controller ──▶ Model ◀──── View
+   │            │             ▲
+   └──事件总线──┴──事件总线────┘
 ```
 
-四条硬规则：
+允许 `Controller → Model`、`View → Model(只读)`、`Model →(事件)→ View`。
+禁止 `Model → Controller`、`Model → View`、`View → Controller(直接调用)`。
 
-1. 模拟层不出现 `GetComponent`、`Instantiate`、`FindObjectOfType`、`Collider2D`。
-2. 模拟层不直接改 `RunState` 之外的单例状态。`RunState` 由 `RunLoop` 注入，不走静态单例——测试时才不用清全局。
-3. 表现层不接受模拟层之外的写操作。UI 想改数据一律发命令（`ShopSystem.TryBuy(index)`），不允许 UI 自己扣金币。
-4. ScriptableObject 在运行时只读。任何"运行时强化"都是 `StatBlock` 里的 modifier，不写回资产。
+View 想表达用户意图（点击购买），走 `View → Controller` 的命令接口，这个接口由 AppRoot 注入给 View 的一个接口引用（`IShopCommands`），不是具体的 `ShopController` 类型。
 
-唯一例外：`RunEvents` 是静态事件中心，因为事件的生产者在模拟层、消费者在表现层，单例比传引用省事。它的字段全部是 `Action` / `event`，只有定义，没有状态。
-
-### 4.1 跨层通信
-
-```
-模拟层  ──RunEvents.UnitDied──▶  表现层（伤害字、掉落、音效）
-       ──RunEvents.WaveCleared─▶  表现层（波次横幅） + 流程层（进商店）
-表现层  ──ShopSystem.TryBuy──▶  模拟层（命令）
-       ──RunLoop.Pause()────▶   模拟层（命令）
-```
-
-事件清单（初版）：`UnitDamaged`、`UnitDied`、`CoinChanged`、`CoinPicked`、`WaveStarted`、`WaveCleared`、`ItemAcquired`、`ItemSold`、`CompanionAcquired`、`CompanionUpgraded`、`ShopOpened`、`ShopClosed`、`SkillUsed`、`PlayerDied`、`RunEnded`。
-
-每个事件都带完整参数（谁、多少、什么来源），不允许让订阅方自己去查别处的状态——否则会出现"事件到了但数据已经被下一步改掉"的顺序 bug。
-
-## 5 核心数据结构
-
-### 5.1 属性与修正
+### 5.3 事件总线
 
 ```csharp
-public enum StatType {
-    MaxHP, Regen, Armor, Dodge, MoveSpeed,
-    Attack, AttackSpeed, CritChance, CritDamage,
-    Projectiles, Range, PickupRadius, Luck, Treasure, ContactDamage
+public interface IEventBus {
+    void Subscribe<T>(Action<T> handler) where T : struct;
+    void Unsubscribe<T>(Action<T> handler) where T : struct;
+    void Publish<T>(in T evt) where T : struct;
+    void Clear();
 }
+```
 
-public enum ModOp { Flat, Percent }
+实现用 `Dictionary<Type, IChannel>`，每个 `Channel<T>` 内部是 `List<Action<T>>`，遍历时用索引 for 循环并支持反注册（标记删除，遍历结束统一清理）。
+
+规则：
+
+1. 事件必须是 `readonly struct`。class 事件会带来堆分配和"发布后又被修改"的问题。
+2. 事件定义集中在 `Core/Events/RunEvents.cs`，一个文件看完所有事件。
+3. 订阅在 `OnEnable`，退订在 `OnDisable`；纯 C# 对象在 `Dispose` 里退订。漏退订是这类架构唯一的真实事故来源，所以 `EventBus` 在开发模式下统计订阅数，退出局内时断言订阅数归零。
+4. 发布只由 Controller 和 Model 内部的系统发，View 不发业务事件。
+5. 一帧内的事件统一在 `RunLoop` 第 11 步分发（`_pending.PublishAll()`），不是当场触发。这样遍历中途改集合的问题不会出现。
+
+首版事件清单：
+
+```csharp
+readonly struct UnitDamaged  { UnitId Target; float Amount; bool IsCrit; DamageType Type; }
+readonly struct UnitDied     { UnitId Unit; UnitKind Kind; Vector2 Position; UnitId Killer; }
+readonly struct CoinChanged  { int Current; int Delta; }
+readonly struct CoinPicked   { int Value; Vector2 Position; }
+readonly struct WaveStarted  { int Index; WaveDefSnapshot Def; }
+readonly struct WaveCleared  { int Index; }
+readonly struct WeaponFired  { UnitId Owner; WeaponId Weapon; int ProjectileCount; }
+readonly struct ItemAcquired { ItemId Id; int NewCount; }
+readonly struct ShopOpened   { int WaveIndex; }
+readonly struct ShopClosed   { }
+readonly struct PlayerDied   { Vector2 Position; }
+readonly struct RunEnded     { RunSummary Summary; }
+```
+
+### 5.4 用一次冲刺验证架构
+
+按 E 冲刺的完整链路，如果这条链路能跑通，架构就没有明显断裂：
+
+```
+InputService 采样 → InputSnapshot{DashPressed}
+  → InputController 读快照 → PlayerController.TryDash()
+    → PlayerModel.StartDash()（改状态位、写速度、扣 CD）
+      → EventBus.Publish(PlayerDashed{...})
+        → DashVfxView 订阅 → 播残影
+        → AudioView 订阅 → 播音效
+        → HudView 订阅 → CD 环开始转
+```
+
+注意 `PlayerController` 不知道任何 View 的存在，`PlayerModel` 也不。加一个新表现（比如屏幕闪白）只改 View 层订阅。
+
+## 6 配置管线
+
+### 6.1 为什么不用 ScriptableObject
+
+Excel 是唯一真源。策划改一个数、跑一次导表、重启游戏就能看到，不需要打开 Unity、不需要拖引用、不需要处理「SO 之间的引用断了」。代价是失去了 Inspector 的引用校验，用导表校验器补回来。
+
+### 6.2 表结构规范
+
+一份 `Config/GameConfig.xlsx`，多个 sheet，每个 sheet 对应一个运行时类型。
+
+| 行 | 内容 |
+|---|---|
+| 1 | 字段名（PascalCase，与 C# 属性名一致） |
+| 2 | 类型（见 6.3） |
+| 3 | 中文说明（导表忽略） |
+| 4+ | 数据 |
+
+约定（违反就导表报错）：
+
+- 第一列必须是 `Id`，字符串，全表唯一。
+- 不允许合并单元格、不允许公式、不允许空行夹在数据中间。
+- 布尔写 `true/false`，不写 `1/0`。
+- 枚举写名字（`Physical`），不写数字。
+- 引用其他表写目标 `Id`（`Weapon.Arrow` 或直接 `Arrow`，两者都接受）。
+- 多值用 `|` 分隔（`Fire|Curse`），列表语义。
+
+首版 sheet：
+
+| sheet | 对应类型 | 何时用 |
+|---|---|---|
+| `Character` | `CharacterDef` | 探梦者 |
+| `Weapon` | `WeaponDef` | 武器 |
+| `Companion` | `CompanionDef` | 旅伴 |
+| `Item` | `ItemDef` | 道具 |
+| `Enemy` | `EnemyDef` | 敌人 |
+| `Wave` | `WaveDef` | 波次 |
+| `Buff` | `BuffDef` | buff（迭代 5 前留空表） |
+| `Balance` | `BalanceDef` | 全局常量（伤害系数、价格曲线、成长率） |
+
+### 6.3 类型系统
+
+| 写法 | C# 类型 | 说明 |
+|---|---|---|
+| `int` `float` `bool` `string` | 同名 | 直接映射 |
+| `enum:DamageType` | 对应枚举 | 导表时校验名字合法 |
+| `id:Weapon` | `string` | 引用校验，导表时确认目标存在 |
+| `list:id:Item` | `string[]` | 列表引用，逐个校验 |
+| `list:float` | `float[]` | |
+| `vec2` | `Vector2` | 写 `1.5,2` |
+| `color` | `Color` | 写 `#RRGGBB` |
+
+### 6.4 导表脚本
+
+`tools/export_config.py`，只用 Python 标准库（`zipfile` + `xml.etree.ElementTree` 解析 xlsx）。
+
+为什么不用 openpyxl：本机没装，而且 Excel 的 xlsx 就是 zip 包 XML，读文本单元格 200 行代码够用，换机器不用配环境。代价是不支持公式与合并单元格——这两条本来就在 6.2 的禁止列表里。
+
+流程：
+
+```
+Config/GameConfig.xlsx
+  → python tools/export_config.py
+    → 校验（字段完整性、引用、枚举、数值区间、唯一性）
+    → Assets/StreamingAssets/Config/*.json（每 sheet 一个）
+    → Assets/StreamingAssets/Config/manifest.json（表名 + 版本 hash + 导表时间）
+```
+
+导表失败时返回非 0 退出码，并在控制台列出「表 / 行 / 字段 / 原因」。CI 或 Editor 菜单里都能调。
+
+### 6.5 运行时加载
+
+```csharp
+public sealed class ConfigDatabase {
+    public IReadOnlyDictionary<string, CharacterDef> Characters;
+    public IReadOnlyDictionary<string, WeaponDef> WeaponDefs;
+    // ...
+
+    public static ConfigDatabase LoadFrom(StreamingAssetsReader reader);
+    public void Validate();   // 引用完整性 + 区间，开发期直接抛异常
+}
+```
+
+- JSON 反序列化用 `com.unity.nuget.newtonsoft-json`（3.2.1）。不用 `JsonUtility`：它不支持字典、不支持字符串写枚举、不支持可空类型。
+- 类型是纯 POCO，字段名与 Excel 字段名一致，加 `[JsonProperty]` 保证大小写不敏感。
+- 加载在 Boot 场景，加载完 `Validate()`，失败直接弹错误面板并阻止进游戏（开发期），发版时降级为警告 + 用默认值。
+
+### 6.6 资源引用
+
+数值走 Excel，美术资源不走。约定：
+
+- 实体预制体按 Id 命名，放在 `Assets/Prefabs/Units/{Kind}/{Id}.prefab`。
+- 运行时用一张 `ResourceMap` SO 把 Id → Prefab 建索引，Boot 时加载。这张表小、变动少，用 SO 比塞进 Excel 合理。
+- 图标按 Id 命名放 `Assets/Art/Icons/{Id}.png`，走 `Addressables`？不做，初版用图集 + 直接引用。
+
+这样划分的好处：策划改数值不用碰 Unity，美术加资源需要程序加一条映射，频率不同，不冲突。
+
+## 7 模拟核心
+
+### 7.1 主循环
+
+```
+RunLoop.Update()
+  1  InputService.Sample() → InputSnapshot
+  2  RunController.Tick(dt)           // 局状态、计时、暂停判断
+  3  PlayerController.Tick(dt)
+  4  CombatController.Tick(dt)        // 武器、投射物、伤害结算
+  5  CompanionSystem.Tick(dt)
+  6  EnemySystem.Tick(dt)
+  7  SpatialGrid.Rebuild()
+  8  PickupSystem.Tick(dt)
+  9  WaveController.Tick(dt)
+  10 Model.Cleanup()                  // 处理死亡、移除、事件入队
+  11 EventBus.PublishPending()
+  12 UnitView.SyncAll()
+```
+
+模拟固定步长 1/60，每帧最多 3 步，渲染不插值。顺序里三处不能动：空间哈希在移动之后（否则子弹打上一帧的位置）、清理在遍历之后（否则边遍历边删）、事件在整轮之后（否则订阅方读到半更新的状态）。
+
+### 7.2 空间哈希
+
+格子边长 2 米，网格 32×32 覆盖 64 米，跟随玩家滚动，滚动时整表重建。每格 `List<int>` 预分配 8。敌人索引分配固定槽位，移除用末尾交换，O(1)。
+
+200 单位的重建开销预计 0.1ms 量级，迭代 1 实测。
+
+### 7.3 属性与修正
+
+```csharp
+public enum StatType { MaxHP, Regen, Armor, Dodge, MoveSpeed, Attack, AttackSpeed,
+                       CritChance, CritDamage, ProjectileCount, Range, PickupRadius, Luck, Treasure }
+
+public enum ModOp { Flat, Percent, Multiply }   // 加了 Multiply 给"独立乘区"用
 
 public readonly struct StatModifier {
     public readonly StatType Stat;
     public readonly float Value;
     public readonly ModOp Op;
-    public readonly object Source;   // 道具实例 / 羁绊 / 药品，卖出时按它批量移除
+    public readonly object Source;      // 按来源批量移除
 }
 
 public sealed class StatBlock {
-    readonly float[] _base;          // 按 StatType 索引
-    readonly List<StatModifier>[] _mods;
-    readonly float[] _final;
-    bool _dirty;
-
-    public float this[StatType t] { get; }   // 脏了才重算
+    public float this[StatType t] { get; }
     public void Add(in StatModifier m);
     public void RemoveBySource(object source);
-    void Recalculate();  // final = (base + Σflat) × (1 + Σpercent)，Dodge/CritChance 做 clamp
+    // final = (base + Σflat) × (1 + Σpercent) × Πmultiply，Dodge/CritChance 做 clamp
 }
 ```
 
-计算顺序固定为 `(base + flat) × (1 + percent)`。所有百分比相加后再乘，不是连乘。这是全项目唯一允许算属性的地方，谁绕过它直接改 `hp`，后面的平衡就再也对不上了。
+三个乘区：`Flat` 先加、`Percent` 相加后乘一次、`Multiply` 每个各乘一次。大多数道具用前两个，少数"独立增伤"用第三个。所有属性必须走这里，禁止直接改 `HP` 之类的最终值。
 
-### 5.2 伤害
+### 7.4 伤害管线
 
 ```csharp
 public readonly struct DamageInfo {
     public readonly float Amount;
-    public readonly DamageType Type;      // Physical / Fire / Curse / True
-    public readonly Unit Source;
+    public readonly DamageType Type;
+    public readonly UnitId Source;
     public readonly Vector2 Direction;
     public readonly float Knockback;
     public readonly bool IsCrit;
-}
-
-public static class DamageResolver {
-    // 顺序：闪避 → 无敌帧 → 暴击已在开火时结算 → 护甲 → 扣血 → 触发回调 → 死亡
-    public static void Apply(Unit target, in DamageInfo dmg);
+    public readonly DamageFlags Flags;   // 是否可闪避、是否触发受击、是否显示数字
 }
 ```
 
-顺序里有三个坑，写进注释：
+结算顺序固定：`闪避 → 无敌帧 → 护甲减伤 → 扣血 → 受击触发 → 死亡`，死亡事件入队延后处理。
 
-1. 暴击必须在开火时算一次，不能打到人再算，否则一个子弹穿透多个目标会各自暴击、伤害跳动不可解释。
-2. 闪避判定在护甲之前，闪掉就是完全免伤，不产生任何触发（否则"受击触发"类道具会靠闪避白嫖）。
-3. 死亡在触发回调之后，但 `UnitDied` 事件必须在下一 tick 才分发，防止在遍历敌人列表时增删。
+暴击在开火瞬间结算一次并写进 `DamageInfo`，不能到命中时再算——一发穿透箭打三个目标如果各自暴击，伤害数字会莫名其妙。
 
-### 5.3 单位
+### 7.5 随机
 
-```csharp
-public abstract class Unit {
-    public int Id;                    // 全局递增，表现层用它做映射 key
-    public Vector2 Position;
-    public Vector2 Velocity;
-    public float Facing;
-    public StatBlock Stats;
-    public float HP;
-    public bool IsDead;
-}
+`xorshift128` 三条流：`runRng`（战斗与商店）、`metaRng`（局外）、`fxRng`（音调、粒子角度）。表现层永远不碰 `runRng`，否则加个粒子效果就能改变整局结果。
 
-public sealed class EnemyUnit : Unit {
-    public EnemyDef Def;
-    public float AttackCooldown;
-    public byte BehaviourState;       // 追击/蓄力/冲锋/抛射/分裂
-}
-```
-
-`Unit` 是纯 C# 类，没有 MonoBehaviour。每个单位对应场景里一个 `UnitView`，两者用 `Id` 在字典里对应，`UnitView` 每帧从 `Unit` 拉位置。
-
-### 5.4 武器
-
-```csharp
-public sealed class WeaponInstance {
-    public WeaponDef Def;
-    public float Cooldown;
-    public Unit Owner;
-    public float RangeMul, DamageMul, IntervalMul;   // 来自主人的属性
-
-    public void Tick(float dt, SpatialGrid grid, ProjectileSystem projectiles);
-}
-```
-
-索敌一律走 `SpatialGrid.QueryNearest(owner.Position, range, filter)`，不遍历全量数组。
-
-### 5.5 对象池
+### 7.6 对象池
 
 ```csharp
 public sealed class Pool<T> where T : Component {
-    public Pool(T prefab, int prewarm, int hardCap, Transform parent);
-    public T Rent();                 // 到 hardCap 返回 null，调用方必须处理
+    public T Rent();     // 到 hardCap 返回 null，调用方必须处理
     public void Return(T item);
 }
 ```
 
-`Rent` 返回 `null` 而不是扩容，是刻意的：子弹池被打爆时我要知道，而不是让它悄悄吃掉内存然后掉帧。
+`Rent` 返回 null 而不是扩容是刻意的：池被打爆要在 DebugOverlay 里看见，而不是悄悄吃掉内存再掉帧。
 
-### 5.6 随机
+## 8 武器系统
+
+### 8.1 三层
 
 ```csharp
-public struct Rng {
-    ulong _s;
-    public Rng(ulong seed);
-    public uint NextUInt();
-    public float Value01();
-    public int Range(int minInclusive, int maxExclusive);
+// 1. 定义（来自 Excel，只读）
+public sealed class WeaponDef {
+    public string Id;
+    public WeaponKind Kind;         // Ranged / Melee
+    public float BaseDamage;
+    public float Cooldown;
+    public float Range;
+    public int Projectiles;
+    public float SpreadDeg;
+    public string BehaviourType;    // 行为类名，见 8.4
+    public float[] Params;          // 行为自定义参数（弧度、穿透数等）
+}
+
+// 2. 运行时（每个持有者一份）
+public sealed class WeaponRuntime {
+    public WeaponDef Def;
+    public IWeaponBehaviour Behaviour;
+    public BuffContainer Buffs;
+    public float Cooldown;
+    public void Tick(float dt, in WeaponContext ctx);
+}
+
+// 3. 行为（策略，加新武器只加一个类）
+public interface IWeaponBehaviour {
+    void OnEquip(WeaponRuntime w, UnitModel owner);
+    void Tick(WeaponRuntime w, float dt, in WeaponContext ctx);
+    void OnUnequip(WeaponRuntime w);
 }
 ```
 
-三条流：`runRng`（掉落、商店）、`metaRng`（局外）、`fxRng`（纯表现，音调、粒子角度）。表现层的随机绝对不能和局内随机共用一条流，否则加一个粒子效果就能改变整局结果，回放和复现会全部失效。
+`WeaponContext` 携带 owner 位置、朝向、目标查询接口、投射物生成接口、伤害结算接口。行为类只通过这些接口做事，拿不到 MonoBehaviour。
 
-## 6 关键机制
-
-### 6.1 主循环顺序
-
-`RunLoop.Update()` 一个入口，内部按固定顺序：
+### 8.2 弓箭（RangedBehaviour）
 
 ```
-1  InputService.Sample()
-2  RunState.AdvanceTime(dt)          // 波次计时、商店计时
-3  PlayerSystem.Tick(dt)
-4  CompanionSystem.Tick(dt)
-5  EnemySystem.Tick(dt)              // AI + 移动
-6  SpatialGrid.Rebuild()             // 移动之后、判定之前
-7  ProjectileSystem.Tick(dt)
-8  PickupSystem.Tick(dt)
-9  TriggerSystem.Tick(dt)            // 定时型道具
-10 WaveDirector.Tick(dt)
-11 RunEvents.Flush()                 // 本 tick 累积的事件统一分发
-12 UnitView.Sync()                   // 表现层同步
+冷却归零 → QueryNearest(射程, 优先级) → 朝向目标
+  → 计算 n 发弹道，扇形展开 (n-1) × SpreadDeg
+  → 每发单独结算暴击，写入 DamageInfo
+  → 生成投射物（速度、穿透数、生命周期从 Params 读）
+  → 发 WeaponFired 事件
 ```
 
-顺序不能随意调：空间哈希必须在移动之后重建（否则子弹打到上一帧的位置），事件必须在全部模拟结束后统一分发（否则订阅方在遍历中途改了集合）。
+投射物自己管移动与碰撞，命中后由 `DamageResolver` 结算，命中数达到穿透上限就回收。弓箭的初版参数：伤害 8、冷却 0.85 秒、射程 8 米、1 发、速度 18 米/秒、穿透 1。
 
-### 6.2 空间哈希
+### 8.3 砍刀（MeleeBehaviour）
 
-- 格子边长 2 米，网格 32×32 覆盖 64×64 米，跟随玩家做区域滚动，滚动时整表重建（200 个单位的重建开销估计在 0.1ms 量级，M1 第 8 步实测确认）。
-- 每格用 `List<int>`，预分配 8，超过就扩容，不回收（避免每 tick 分配）。
-- 敌人注册时分配固定索引，`Remove` 用末尾交换法，O(1)。
-
-### 6.3 开火与弹道
+近战不走投射物，用扇形判定：
 
 ```
-冷却归零 → QueryNearest(射程内, 优先级 精英 > 远程 > 近战)
-        → 命中则把朝向转到目标
-        → 计算弹道数 n，扇形展开角 (n-1) × 5°
-        → 为每发子弹做一次暴击判定，写入 DamageInfo
-        → 从池里 Rent 子弹，满了就放弃这一发（不排队）
+冷却归零 → 记录挥砍起始角与结束角（按攻击方向 ±45°）
+  → 在挥砍的伤害窗口内（0.08s ~ 0.22s）对扇形内敌人判定一次
+  → 每个敌人一次挥砍只结算一次（记录 hit 集合，用位集或 List<int>，挥砍结束清空）
+  → 结算伤害 + 击退
 ```
 
-### 6.4 旅伴跟随
+砍刀初版参数：伤害 15、冷却 0.6 秒、半径 2.2 米、扇角 90°、击退 2 米。
 
-不做寻路。目标点 = 玩家位置 + 按索引均分的角度 × 半径 1.6 米。旅伴向目标点移动，速度上限 1.2 × 玩家当前速度。距离超过 4 米直接瞬移回目标点。这套在 200 敌人的场景里是唯一能压住开销的做法，代价是旅伴会穿过敌人（不需要处理，视觉上可接受）。
+近战的坑：`Cooldown 0.6` 而伤害窗口 0.14 秒，如果按冷却触发判定，攻速加成会让伤害凭空变高，所以判定必须绑定动画窗口的时间戳，不能绑定冷却。初版没有动画，就用"挥砍开始后 0.08s 判定一次"的固定延迟。
 
-### 6.5 波次状态机
+### 8.4 扩展点（为 buff 系统预留）
 
+加武器不改框架，只需要：
+
+1. 新建 `IWeaponBehaviour` 实现类（比如 `ReturningBoomerangBehaviour`）。
+2. `BehaviourType` 列填类名，`Params` 填参数。
+3. 反射实例化（开发期）或预先注册的工厂字典（发布版，避免 IL2CPP 裁剪掉类）。
+
+为 buff 留的三个口子：
+
+```csharp
+// 口子 1：伤害修饰链，在 DamageResolver 之前跑
+public interface IDamageModifier {
+    int Priority { get; }
+    void Modify(ref DamageInfo dmg, in DamageContext ctx);
+}
+
+// 口子 2：武器级事件，buff 可以挂在这里
+public interface IWeaponHook {
+    void OnFire(WeaponRuntime w);
+    void OnHit(WeaponRuntime w, UnitId target, ref DamageInfo dmg);
+    void OnKill(WeaponRuntime w, UnitId target);
+}
+
+// 口子 3：buff 容器，武器和携带者各有
+public sealed class BuffContainer {
+    public void Add(BuffDef def, UnitId source, int stacks);
+    public void Remove(string buffId);
+    public void Tick(float dt);
+    public bool Has(string tag);
+}
 ```
-Idle ──Start──▶ Spawning ──配额刷完──▶ Clearing ──场上清空──▶ Reward ──▶ Shop
-                                                              │
-                                                   BOSS 波则进 BossFight
-```
 
-`WaveDirector` 只认数据：每一波读 `WaveDef`（刷怪间隔、单次数量、怪种池、上限、精英节奏）。加一波不需要改代码。
+迭代 5 接 buff 系统时，`BuffDef` 的效果类型只做四种：`StatModifier`（走 7.3）、`PeriodicDamage`、`OnHitTrigger`、`OnKillTrigger`。这四种覆盖 GDD 里 18 件道具的触发型需求，剩下的特殊道具用专门的行为类。
 
-### 6.6 商店抽卡
+## 9 性能与 ECS 决策条件
 
-```
-候选池 = 全部道具 - 已满 2 件的道具 - 品质不满足波次下限的
-加权抽取（品质权重受幸运修正，白品质概率向紫色转移）
-保底：每波必须出现至少 1 件 ≥ 蓝色的道具，没出就替换最后一个货位
-价格 = 基准价 × (1 + 0.1 × (波次 - 1)) × 角色折扣 × 道具折扣
-```
+### 9.1 预算
 
-抽卡是纯函数 `ShopSystem.Roll(rng, runState, slotCount)`，可以在 EditMode 里跑一万次统计分布。
+设计目标，迭代 1 结束时逐项打表核对，对不上就重新设计，不"先这样后面优化"。
 
-### 6.7 存档
-
-```json
-{ "schema": 1, "totalCoins": 0, "totalKills": 0, "unlocks": [], "bestScores": {} }
-```
-
-`schema` 不匹配时跑迁移函数链。写入用"写 `.tmp` → 删除旧文件 → 移动"的顺序，避免断电留下半个文件。
-
-## 7 场景与资源组织
-
-| 场景 | 用途 | 内容 |
+| 项 | 目标 | 测量 |
 |---|---|---|
-| `Boot` | 启动 | 服务初始化、加载配置与存档，然后跳 MainMenu |
-| `MainMenu` | 主菜单 + 选人 | 6 个角色卡、解锁状态、开始 |
-| `Run` | 局内 | 只放相机、UI、系统容器；实体全部运行时生成 |
-| `Test_Arena` | 测试场 | 固定敌人刷新、可调参数、用于手测和性能压力 |
+| 帧时间 | ≤ 16.6ms | DebugOverlay 滑动平均 |
+| 模拟 tick 总耗时 | ≤ 3ms | 各系统 Stopwatch 累加 |
+| 渲染 | ≤ 8ms | Profiler |
+| Draw call | ≤ 40（3D 场景比 2D 多，含阴影 pass） | Frame Debugger |
+| 同屏敌人 | 200 | 场景统计 |
+| 活跃 AudioSource | ≤ 16 | AudioBus |
+| 模拟层 GC | 0 B/帧 | Profiler GC Alloc |
+| 峰值内存 | ≤ 500MB | Profiler |
 
-- 所有 Sprite 走两张图集：`Atlas_Units`（角色/敌人/旅伴）、`Atlas_FX`（特效/弹幕/图标）。图集外的 Sprite 一律不允许进 `Resources`。
-- 材质：`Sprite-Unlit-Default` 一个，`Sprite-Lit-Default` 一个，全局共用。逐对象改材质属性会打断合批。
-- Prefab 只保留"实体原型"，不做场景内摆件。
-- `Resources` 只放 Boot 必须加载的东西，其余走直接引用。
+### 9.2 什么时候才考虑 ECS
 
-## 8 性能预算
+初版不引入 ECS。触发评估的硬条件，两条同时满足才开会讨论：
 
-这是设计目标，不是实测值。M1 结束时用 `DebugOverlay` 逐项打表核对，对不上的项要重新设计，不允许"先这样后面优化"。
+1. 同屏敌人稳定 ≥ 600，或模拟 tick 耗时 ≥ 6ms 且已排除自身算法问题（Profiler 确认热点在敌人位移与索敌）。
+2. 已有方案（批量位移、降低索敌频率、空间哈希分级）都把帧时间压不回 10ms 以内。
 
-| 项 | 目标 | 测量方式 |
+即使触发，也按这个顺序走，不直接上 ECS：先把敌人位移和索敌改成 `NativeArray + IJobParallelFor + Burst`（保留现有数据结构和 MonoBehaviour 表现层），实测收益。如果 Jobs 版本仍然不够，再考虑 ECS。理由：ECS 会重写 40% 以上的代码，对一个 15 分钟体量的游戏来说，除非实测数据说话，否则是纯负债。
+
+`DebugOverlay` 里加一个开关，实时显示"敌人 tick 耗时 / 敌人数量"，方便日后判断。
+
+## 10 工程结构
+
+### 10.1 需要加的包
+
+| 包 | 版本 | 用途 |
 |---|---|---|
-| 帧时间 | ≤ 16.6ms | `DebugOverlay` 滑动平均 |
-| 模拟 12 个 tick 的总耗时 | ≤ 3ms | 各系统 Stopwatch 累加 |
-| 渲染 | ≤ 8ms | Profiler Rendering 采样 |
-| Draw call | ≤ 25 | Frame Debugger |
-| 同屏 SpriteRenderer | ≤ 600 | 场景统计 |
-| 活跃 AudioSource | ≤ 16 | AudioBus 计数 |
-| 模拟层每帧 GC 分配 | 0 B | Profiler GC Alloc 列 |
-| 峰值内存 | ≤ 400MB | Profiler Memory |
+| `com.unity.inputsystem` | 1.7.0 | 输入 |
+| `com.unity.cinemachine` | 2.9.7 | 相机 |
+| `com.unity.nuget.newtonsoft-json` | 3.2.1 | 配置反序列化 |
 
-零分配的具体做法：不用 LINQ、不在 tick 里 new 数组、`List<T>` 的遍历用 `for` 而不是 `foreach`（List 的 foreach 不装箱，但仍会走枚举器接口的方法调用）、事件参数用 struct 或可复用的类实例、字符串拼接只出现在 UI 且每次变化才拼。
+Cinemachine 用 2.9.x 而不是 3.x：3.x 的 API 大改（`CinemachineCamera` 替代 `CinemachineVirtualCamera`），2.9 在 2022.3 上是最稳的，社区资料也多。日后升级要重写相机层，代码集中在 `CameraRig` 一个文件里能接受。
 
-## 9 工程约定
-
-### 9.1 程序集
+### 10.2 asmdef
 
 ```
 Assets/Scripts/
-  Game/Runtime/       Game.Runtime.asmdef      全部运行时代码
-  Game/Editor/        Game.Editor.asmdef       SO 校验、CSV 导入、场景工具
-  Game/Tests/EditMode Game.Tests.EditMode.asmdef
-  Game/Tests/PlayMode Game.Tests.PlayMode.asmdef
+  Game/Runtime/   Game.Runtime.asmdef   （引用 UniRx? 不，引用 InputSystem / Cinemachine / Newtonsoft）
+  Game/Editor/    Game.Editor.asmdef    （引用 Runtime，仅 Editor 平台）
+  Game/Tests/     Game.Tests.EditMode.asmdef
 ```
 
-分 asmdef 的收益：改 UI 代码不会重编译全部模拟代码；测试能引用内部类型（配合 `InternalsVisibleTo`）。代价：每次加引用要改 asmdef，初始化时容易漏。M1 一次配好。
+运行时程序集内部再分目录，不分成多个 asmdef。理由：分太细会让"改一个字段要改 5 个 asmdef 引用"，在这个体量上是纯负担。只在 Editor 与 Tests 处切分。
 
-### 9.2 命名与结构
-
-- 类型 `PascalCase`，私有字段 `_camelCase`，常量 `SCREAMING_SNAKE`（Unity 官方风格）。
-- 一个文件一个 public 类型，文件名与类型名一致。
-- `System` 后缀的类是纯 C# 系统；`Controller` 是 MonoBehaviour 控制层；`Def` 是 ScriptableObject。
-- 不写 `#region`。
-
-### 9.3 提交
-
-`类型: 一句话`（feat / fix / refactor / docs / chore）。一次提交只做一件事。Unity 的 `.meta` 必须与资源同一次提交，这是 Unity 项目最容易踩的坑。
-
-### 9.4 编辑器设置
-
-`.gitattributes` 已加入 UnityYAMLMerge 驱动配置，用于 `.unity` / `.prefab` / `.asset` 的合并。使用前需要在本地执行一次（路径按自己的编辑器安装位置改）：
+### 10.3 目录
 
 ```
-git config merge.unityyamlmerge.name "Unity SmartMerge"
-git config merge.unityyamlmerge.driver "'C:/Program Files/Unity/Hub/Editor/2022.3.34f1c1/Editor/Data/Tools/UnityYAMLMerge.exe' merge -p %O %B %A %A"
+Assets/
+  Scenes/           Boot, MainMenu, Run, Test_Arena
+  Scripts/Game/
+    Core/           AppRoot, RunLoop, EventBus, Pool, Rng, DebugOverlay
+    Core/Events/    RunEvents.cs（所有事件定义）
+    Model/          RunState, UnitModel, StatBlock, BuffContainer, ProjectileModel
+    Config/         ConfigDatabase, *Def.cs
+    Controllers/    InputController, PlayerController, CombatController, WaveController, ShopController, RunController
+    Systems/        SpatialGrid, EnemySystem, CompanionSystem, PickupSystem, DamageResolver
+    Weapons/        IWeaponBehaviour, RangedBehaviour, MeleeBehaviour, WeaponRuntime
+    Views/          UnitView, HudView, ShopView, DamageNumberView, VfxSpawner, AudioView
+    Services/       InputService, SaveService, StreamingAssetsReader
+    Editor/         导表调用、Config 校验窗口、场景工具
+  Prefabs/Units/    Player, Enemies, Companions
+  Prefabs/Weapons/
+  Art/Materials/
+  Art/Meshes/
+  Config/           GameConfig.xlsx（源文件）
+  StreamingAssets/Config/   *.json（生成的，提交进 git 便于复查 diff）
+  docs/
+tools/
+  export_config.py
 ```
 
-不做这个配置也能用，但场景冲突会变成一行行 YAML 的文本冲突，基本无法靠肉眼解决。
+`StreamingAssets/Config` 的 json 提交进 git。理由：策划改了表但忘了跑导表时，能靠 diff 看出来；也方便回滚到某一版的数值。
 
-## 10 实施顺序
+### 10.4 Layer 与 Tag
 
-M1（骨架）拆成 8 步，每步都有可验证的产出。前 7 步没有玩家看得见的进度，这是正常的。
+| Layer | 用途 |
+|---|---|
+| 6 `Ground` | 地面 |
+| 7 `Player` | 玩家 |
+| 8 `Enemy` | 敌人 |
+| 9 `Projectile` | 投射物 |
+| 10 `Pickup` | 拾取物 |
+| 11 `Boundary` | 边界 |
 
-| 步 | 内容 | 验证方式 |
-|---|---|---|
-| 1 | 切 2D Renderer、装 Input System、改 activeInputHandler、建 asmdef | 编辑器和构建都能跑，日志里无 URP 警告 |
-| 2 | 数据层：6 个 Def 类型 + 几条测试数据 | Inspector 里建得出来，字段完整 |
-| 3 | `RunLoop` + `RunState` + 假时钟 | 打出 5 波的时间线日志，顺序正确 |
-| 4 | 玩家移动 + 相机 + `UnitView` | 手感到位（响应 1 帧内） |
-| 5 | `SpatialGrid` + `EnemySystem` + 1 种敌人 | 200 个敌人追人，DebugOverlay 显示 tick 耗时 |
-| 6 | `WeaponInstance` + `ProjectileSystem` + `DamageResolver` | 打得死，伤害数字对得上手算 |
-| 7 | `Pool<T>` 全量接入 | Profiler 里 GC Alloc 归零 |
-| 8 | 压力测试场景 + 预算打表 | 200 敌 / 400 弹下 60fps，逐项核对第 8 节 |
+模拟层不用 Layer 做判定（自写距离判定），Layer 只用于相机裁剪、光照层级和调试显示。
 
-M2 到 M4 的拆分在 GDD 里，技术上只补充一条：**M2 结束前必须有一次数值全表的自动化校验**（比如"任何一件道具的三项属性之和不超过阈值"），否则到 M3 内容一多，平衡错误会从类问题退化成个例问题。
+## 11 里程碑映射
 
-## 11 风险与未决
+迭代拆分见 [ITERATION_PLAN.md](ITERATION_PLAN.md)。本方案对应的实现顺序：
+
+| 迭代 | 本方案中落地的章节 |
+|---|---|
+| I0 工程基座 | 2、3、4、6、10 |
+| I1 战斗核心 | 5、7、8.2、9 |
+| I2 循环与内容 | 6（完整表）、8.3、商店、波次 |
+| I3 内容填充 | 全部数值表、buff 预留验证 |
+| I4 打磨 | 2.3、2.4、音频、结算 |
+| I5 扩展 | 8.4 接 buff、难度、无尽 |
+
+## 12 风险
 
 | 风险 | 影响 | 处理 |
 |---|---|---|
-| 2D Renderer 切换可能影响现有 SampleScene 与 URP asset | 中 | 旧 asset 保留；切换后立刻截图对比；出问题回退只改一个设置 |
-| TMP 中文字库体积 | 中 | 用 3500 常用字子集；缺字回退系统字体；M2 前实测图集大小 |
-| 自写碰撞在敌人大量重叠时的行为异常（比如全挤在玩家身上） | 中 | 敌人之间加轻量分离力（每帧一次邻格查询，代价低）；实在不行回退到只用"推开玩家" |
-| BOSS 动态血量需要玩家 DPS 统计 | 低 | `RunState` 里维护 30 秒滑动窗口，事件驱动，不额外开销 |
-| 触屏/手柄的商店交互 | 中 | 商店 UI 从一开始就按"可键盘焦点导航"设计，不做纯鼠标 hover |
-| 200 敌人下的 SpriteRenderer 开销未实测 | 高 | 这是 M1 第 8 步的验收项。如果打不到 60fps，备选方案是把敌人改成 `Graphics.DrawMeshInstanced` 的四边形 + 图集 UV 偏移，代价是失去逐对象材质与 Sort 便利 |
-| 中文字体 + TMP 在 200 个伤害数字下的性能 | 中 | 伤害数字用数字专用图集（0-9 + 暴击符号），不用 TMP |
+| 正交斜视的遮挡：玩家被高个子敌人挡住 | 中 | 玩家描边壳 + 敌人高度上限 0.8 米；实测再决定要不要做 X 光 |
+| Cinemachine 2.9 的正交相机 follow 在快速移动时有轻微抖动 | 中 | Transposer 的 damping 从 0.3 起调；抖动明显就换成手写跟随（20 行），Cinemachine 只留 Impulse |
+| Excel 是二进制，git 无法 diff | 中 | 生成的 json 提交进 git，用 json 的 diff 做审核；xlsx 只当源文件 |
+| 导表脚本自实现 xlsx 解析，遇到特殊格式会崩 | 中 | 6.2 的禁令 + 导表报错清晰；提供一条紧急路径：Excel 另存 CSV 再导 |
+| 3D 几何体美术量比 2D 大 | 高 | 全部用 Unity 内置几何体（Capsule/Cube/Sphere）+ 材质颜色区分，迭代 3 前不做自定义模型 |
+| 200 个 3D 物体的实时阴影开销 | 高 | 敌人默认关投射阴影，只开接触阴影盘；方向光阴影距离限制在 40 米内 |
+| MVC 在游戏里容易退化成"Controller 什么都知道" | 中 | 5.2 的禁止项写进 code review 清单；每个 Controller 的字段里不许出现 `*View` 类型 |
 
-## 12 待你拍板的三件事
+## 13 待定
 
-1. 目标平台：PC 独显优先，还是也要满足集显/掌机？这决定第 8 节预算是硬指标还是参考。
-2. 美术方向：HD 2D（高清贴图，PPU 100，非 Pixel Perfect）还是像素风（PPU 32/64，需要 Pixel Perfect Camera 和全部尺寸重定）。这个决定越早越好，晚了所有尺寸和相机参数都要重做。
-3. 是否需要移动端。需要的话，输入层要从 M1 就抽象成设备无关，商店 UI 也要按触屏设计。
+1. 目标帧率与最低配置（决定阴影和 Bloom 的取舍）。
+2. 美术是否用自发光描边还是后处理 Outline（影响材质数量与 draw call）。
+3. 是否要 4 人本地同屏（现在架构能支持，但输入与相机要改）。
