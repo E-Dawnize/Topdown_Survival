@@ -114,3 +114,7 @@ Thumbs.db
 
 # 保留本项目自定义的 VSCode 设置
 !/.vscode/settings.json
+
+# Python
+__pycache__/
+*.pyc
