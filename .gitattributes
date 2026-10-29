@@ -1,0 +1,41 @@
+# 默认按文本处理，换行统一为 LF
+* text=auto eol=lf
+
+# Unity 的 YAML 资产用 SmartMerge 合并，避免场景/Prefab 冲突变成文本冲突
+*.unity           merge=unityyamlmerge eol=lf
+*.prefab          merge=unityyamlmerge eol=lf
+*.asset           merge=unityyamlmerge eol=lf
+*.meta            merge=unityyamlmerge eol=lf
+*.controller      merge=unityyamlmerge eol=lf
+*.mat             merge=unityyamlmerge eol=lf
+*.anim            merge=unityyamlmerge eol=lf
+*.overrideController merge=unityyamlmerge eol=lf
+*.physicMaterial   merge=unityyamlmerge eol=lf
+*.physicsMaterial2D merge=unityyamlmerge eol=lf
+*.playable        merge=unityyamlmerge eol=lf
+*.preset          merge=unityyamlmerge eol=lf
+*.signal          merge=unityyamlmerge eol=lf
+*.mask            merge=unityyamlmerge eol=lf
+*.asmdef          merge=unityyamlmerge eol=lf
+*.asmref          merge=unityyamlmerge eol=lf
+*.shadergraph     merge=unityyamlmerge eol=lf
+*.shadersubgraph  merge=unityyamlmerge eol=lf
+
+# 二进制资源，不做文本转换和 diff
+*.png     binary
+*.jpg     binary
+*.psd     binary
+*.tga     binary
+*.exr     binary
+*.fbx     binary
+*.wav     binary
+*.mp3     binary
+*.ogg     binary
+*.dll     binary
+*.so      binary
+*.a       binary
+*.ttf     binary
+*.otf     binary
+
+# Windows 脚本保持 CRLF
+*.bat     text eol=crlf

@@ -7,6 +7,7 @@
 ## 文档
 
 - [游戏设计文档](Assets/docs/GDD.md)
+- [技术方案](Assets/docs/TECH_DESIGN.md)
 
 ## 环境
 
