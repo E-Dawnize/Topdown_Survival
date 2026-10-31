@@ -4,6 +4,7 @@ using Game.Controllers;
 using Game.Core;
 using Game.Core.Events;
 using Game.Model;
+using Game.Systems;
 using Game.Systems.Weapons;
 using NUnit.Framework;
 using UnityEngine;
@@ -389,6 +390,86 @@ namespace Game.Tests
             controller.StartRun();
             Assert.AreEqual(0, shop.Pity, "换一局必须把上一局的保底计数清零");
             Assert.IsFalse(shop.IsOpen);
+        }
+
+        [Test]
+        public void ThirdSlotSellsCompanionsAndRepeatPurchasesLevelThemUp()
+        {
+            var bus = new EventBus();
+            var player = new PlayerModel(100f, 5f, 15f, 0.15f, 2f, 67f);
+            var run = new RunState();
+            run.AddCoins(1000);
+
+            var random = new DeterministicRandom(Seed);
+            var enemies = new EnemySystem(player, 67f);
+            var weapons = new Dictionary<string, WeaponDef>
+            {
+                ["Bow"] = new WeaponDef
+                {
+                    Id = "Bow", Name = "弓箭", Kind = WeaponKind.Ranged, BaseDamage = 8f, Cooldown = 0.85f,
+                    Range = 8f, Projectiles = 1, SpreadDeg = 0f,
+                    BehaviourType = WeaponSystem.RangedBehaviourType, ProjectileSpeed = 18f, Pierce = 1,
+                    Params = new float[0]
+                }
+            };
+            var companions = new CompanionSystem(player, enemies, weapons, random, bus);
+
+            // 只放一个旅伴：货位上的候选是确定的，可以逐间商店验证"升级而不是第二个"
+            var companionTable = new Dictionary<string, CompanionDef>
+            {
+                ["IronBox"] = new CompanionDef
+                {
+                    Id = "IronBox", Name = "铁盒", Faction = CompanionFaction.Machine, WeaponId = "Bow",
+                    FollowRadius = 1.6f, MaxHP = 40f
+                }
+            };
+
+            var shop = new ShopController(player, run, Items(6), bus, random, 0.1f, companions, companionTable);
+
+            shop.OpenShop(1);
+
+            Assert.IsNotNull(shop.Slot(ShopController.CompanionSlotIndex).Companion,
+                "第 3 个货位固定卖旅伴（GDD 10.1）");
+            Assert.IsNull(shop.Slot(ShopController.CompanionSlotIndex).Item, "旅伴格里不会再摆一件道具");
+            Assert.AreEqual(ShopController.CompanionBasePrice, shop.Slot(ShopController.CompanionSlotIndex).Price,
+                "第 1 波按基准价卖");
+
+            for (int slot = 0; slot < ShopController.SlotCount; slot++)
+            {
+                if (slot == ShopController.CompanionSlotIndex) continue;
+                Assert.IsNotNull(shop.Slot(slot).Item, "其余 5 格仍然是道具，两种货在同一排格子里共存");
+            }
+
+            int price = shop.Slot(ShopController.CompanionSlotIndex).Price;
+            Assert.IsTrue(shop.CanBuy(ShopController.CompanionSlotIndex));
+            Assert.IsTrue(shop.TryBuy(ShopController.CompanionSlotIndex));
+
+            Assert.AreEqual(1, companions.Count, "买到旅伴应当进队伍");
+            Assert.AreEqual(1, companions.LevelOf("IronBox"), "第一次买是 1 级");
+            Assert.AreEqual(0, shop.Owned.Count, "旅伴不进道具的 Owned（它的属性修正由自己和羁绊持有）");
+            Assert.AreEqual(1000 - price, run.Coins);
+            Assert.IsTrue(shop.Slot(ShopController.CompanionSlotIndex).IsEmpty, "买走以后这一格清空");
+            Assert.IsFalse(shop.TryBuy(ShopController.CompanionSlotIndex), "同一格不能重复购买");
+
+            // 下一间商店：同一个旅伴再来一次是升级，不是第二个
+            shop.OpenShop(2);
+            Assert.IsNotNull(shop.Slot(ShopController.CompanionSlotIndex).Companion);
+            Assert.AreEqual(shop.CompanionPriceOf(2), shop.Slot(ShopController.CompanionSlotIndex).Price,
+                "旅伴与道具共用同一条每波上浮公式");
+            Assert.IsTrue(shop.TryBuy(ShopController.CompanionSlotIndex));
+            Assert.AreEqual(1, companions.Count, "重复购买升的是等级，不会多一个旅伴");
+            Assert.AreEqual(2, companions.LevelOf("IronBox"));
+
+            // 第三间：升到 3 级（GDD 7.3 的上限）
+            shop.OpenShop(3);
+            Assert.IsTrue(shop.TryBuy(ShopController.CompanionSlotIndex));
+            Assert.AreEqual(3, companions.LevelOf("IronBox"));
+
+            // 满级之后这一格退回道具：不摆一格点了没反应的货
+            shop.OpenShop(4);
+            Assert.IsNull(shop.Slot(ShopController.CompanionSlotIndex).Companion, "满级后不再挂在旅伴货位上");
+            Assert.IsNotNull(shop.Slot(ShopController.CompanionSlotIndex).Item, "这一格退回当前道具");
+            Assert.IsTrue(shop.CanBuy(ShopController.CompanionSlotIndex), "退回道具后按道具的规则能买");
         }
 
         // ---- 装配 ----

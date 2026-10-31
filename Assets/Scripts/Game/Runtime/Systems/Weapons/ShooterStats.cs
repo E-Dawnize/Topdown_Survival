@@ -19,12 +19,21 @@ namespace Game.Systems.Weapons
         /// <summary>攻速加成，0.5 表示 +50%，间隔 = 基础间隔 / (1 + 攻速加成)。</summary>
         public readonly float AttackSpeed;
 
-        public ShooterStats(float attackBonus, float critChance, float critDamage, float attackSpeed)
+        /// <summary>
+        /// 在武器表给的弹道数上额外增加的几发（GDD 5.1 的"弹道数"，机械 4 件羁绊 +1）。
+        /// 武器表里的 Projectiles 仍然是自己的基础发数，这里只加不乘：
+        /// "单武器独立加成"的意思是武器自己的多弹道不会被全局属性覆盖掉。
+        /// </summary>
+        public readonly int BonusProjectiles;
+
+        public ShooterStats(float attackBonus, float critChance, float critDamage, float attackSpeed,
+            int bonusProjectiles = 0)
         {
             AttackBonus = attackBonus;
             CritChance = critChance;
             CritDamage = critDamage;
             AttackSpeed = attackSpeed;
+            BonusProjectiles = bonusProjectiles;
         }
     }
 }

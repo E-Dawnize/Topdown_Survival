@@ -3,15 +3,23 @@ using System.Collections.Generic;
 using Game.Config;
 using Game.Core.Events;
 using Game.Model;
+using Game.Systems;
 using Game.Systems.Weapons;
 using UnityEngine;
 
 namespace Game.Controllers
 {
-    /// <summary>商店里的一格候选。Item 为 null 表示这一格没有东西可买（已买走，或道具表填不满）。</summary>
+    /// <summary>
+    /// 商店里的一格候选。Item 与 Companion 至多有一个非空，两个都为空表示这一格没有东西可买（已买走，或道具表填不满）。
+    /// 买的是什么只看格子里装的是哪种 Def：道具走道具那条路（StatBlock 修正 + 叠层），旅伴走进队伍。
+    /// 不在商店里写任何旅伴 Id——加一个旅伴只改配置，不改代码。
+    /// </summary>
     public readonly struct ShopSlot
     {
         public readonly ItemDef Item;
+
+        /// <summary>旅伴货。非空时这一格买的是旅伴（重复购买即升级），Item 一定是 null。</summary>
+        public readonly CompanionDef Companion;
 
         /// <summary>按开这一间商店时的波次算好的价格。翻牌那一刻就定死，之后波次不再变它。</summary>
         public readonly int Price;
@@ -19,10 +27,18 @@ namespace Game.Controllers
         public ShopSlot(ItemDef item, int price)
         {
             Item = item;
+            Companion = null;
             Price = price;
         }
 
-        public bool IsEmpty => Item == null;
+        public ShopSlot(CompanionDef companion, int price)
+        {
+            Item = null;
+            Companion = companion;
+            Price = price;
+        }
+
+        public bool IsEmpty => Item == null && Companion == null;
     }
 
     /// <summary>
@@ -45,6 +61,9 @@ namespace Game.Controllers
     /// 波间商店的纯逻辑：抽卡、保底、价格、刷新、买入。不碰 UI，也不自己判断"现在是不是在商店里"——
     /// 开 / 关由 RunController 驱动（进商店时 OpenShop，CloseShop 时 Close）。
     ///
+    /// 6 格里固定有一格卖旅伴（见 CompanionSlotIndex）：道具与旅伴共用货位与价格公式，
+    /// 区分只看格子里装的是 ItemDef 还是 CompanionDef，不在代码里写旅伴 Id。
+    ///
     /// 抽卡随机流用 runRng（技术方案 7.5：战斗与商店同一条）：同一种子下，买不买、刷不刷新
     /// 都会改变后续暴击序列，这是明确接受的取舍，好处是一局只有一条随机源要复现。
     ///
@@ -55,6 +74,20 @@ namespace Game.Controllers
     {
         /// <summary>每间商店的格数。GDD 10.1 说波 2 后 5 格、波 4 后 6 格，I2-4 的验收口径是先一律 6 格。</summary>
         public const int SlotCount = 6;
+
+        /// <summary>
+        /// 旅伴货的固定货位（0 基下标 2 = GDD 10.1 的"第 3 个货位"）。
+        /// 有旅伴可招时这一格换成旅伴，没有就保留原来抽到的道具：这一格是唯一的旅伴入口，
+        /// 所以"旅伴和道具同处 6 格"不会变成随机事件。
+        /// </summary>
+        public const int CompanionSlotIndex = 2;
+
+        /// <summary>
+        /// 旅伴的基准价。Companion.json 没有价格列，而本阶段不许改配置表，所以价格只能写在代码里：
+        /// 取 70（蓝色道具 45 与紫色道具 80 之间），与道具共用同一条"每波上浮"公式。
+        /// 表里补了价格列以后，把这里换成读 CompanionDef 即可。
+        /// </summary>
+        public const int CompanionBasePrice = 70;
 
         /// <summary>
         /// 刷新价格。GDD 10.1 写的是"首次 5 金币，每次 +3"，I2-4 改成一间商店首次免费、之后固定 10：
@@ -84,6 +117,18 @@ namespace Game.Controllers
         /// <summary>全表平铺（同样按 Id 排序）。抽到的品质在表里一件都没有时，从这里兜一件出来。</summary>
         readonly ItemDef[] _allItems;
 
+        /// <summary>
+        /// 旅伴队伍。可空：只测道具的用例不需要它，那样旅伴货位永远不会出现，行为与 I2-4 完全一致。
+        /// 商店只通过它问"能不能再招"与"招进来"，等级、羁绊、武器都归 CompanionSystem。
+        /// </summary>
+        readonly CompanionSystem _companions;
+
+        /// <summary>旅伴表，按 Id 排序：字典遍历顺序不是契约，排序后同一种子抽到同一间商店的同一个旅伴。</summary>
+        readonly CompanionDef[] _companionPool;
+
+        /// <summary>本次可以招的旅伴（没招过或没满级的），也是按 Id 顺序。滚动货位时复用，不每间商店 new。</summary>
+        readonly List<CompanionDef> _companionOffers = new List<CompanionDef>(CompanionSystem.MaxCompanions);
+
         readonly ShopSlot[] _slots = new ShopSlot[SlotCount];
         readonly List<OwnedItem> _owned = new List<OwnedItem>(8);
         readonly Dictionary<string, int> _stacks = new Dictionary<string, int>(8);
@@ -98,7 +143,8 @@ namespace Game.Controllers
         bool _opened;
 
         public ShopController(PlayerModel player, RunState run, IReadOnlyDictionary<string, ItemDef> items,
-            IEventBus events, IRandom01 random, float priceGrowthPerWave)
+            IEventBus events, IRandom01 random, float priceGrowthPerWave,
+            CompanionSystem companions = null, IReadOnlyDictionary<string, CompanionDef> companionDefs = null)
         {
             _player = player ?? throw new ArgumentNullException(nameof(player));
             _run = run ?? throw new ArgumentNullException(nameof(run));
@@ -138,6 +184,19 @@ namespace Game.Controllers
                 Array.Copy(bucket, 0, _allItems, cursor, bucket.Length);
                 cursor += bucket.Length;
             }
+
+            _companions = companions;
+            _companionPool = BuildCompanionPool(companionDefs);
+        }
+
+        /// <summary>旅伴按 Id 排序平铺。没有队伍或没有表时是空数组，旅伴货位因此永远不会出现。</summary>
+        static CompanionDef[] BuildCompanionPool(IReadOnlyDictionary<string, CompanionDef> companionDefs)
+        {
+            if (companionDefs == null || companionDefs.Count == 0) return new CompanionDef[0];
+
+            var pool = new List<CompanionDef>(companionDefs.Values);
+            pool.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
+            return pool.ToArray();
         }
 
         /// <summary>当前商店对应的波次（进商店时刚打完的那一波），价格按它算。</summary>
@@ -240,10 +299,14 @@ namespace Game.Controllers
         {
             if (!_opened) return false;
             if (index < 0 || index >= _slots.Length) return false;
+            if (_slots[index].Price > _run.Coins) return false;
+
+            // 旅伴货：能不能再招（队伍未满、未满级）由 CompanionSystem 说话，商店不自己数队伍
+            CompanionDef companion = _slots[index].Companion;
+            if (companion != null) return _companions != null && _companions.CanRecruit(companion);
 
             ItemDef def = _slots[index].Item;
             if (def == null) return false;
-            if (_slots[index].Price > _run.Coins) return false;
 
             // MaxStack <= 0 的配置当 1 处理：不许叠的写成 0 是笔误，不该变成"无限叠"
             int maxStack = def.MaxStack > 0 ? def.MaxStack : 1;
@@ -251,23 +314,39 @@ namespace Game.Controllers
         }
 
         /// <summary>
-        /// 买第 index 格。买入后这一格清空（Item 变 null），同一格不可重复购买。
-        /// 属性走 StatBlock.Add，Source 是这一次购买的 OwnedItem 实例；同名道具受 MaxStack 限制。
+        /// 买第 index 格。买入后这一格清空（Item 与 Companion 都变 null），同一格不可重复购买。
+        /// 道具：属性走 StatBlock.Add，Source 是这一次购买的 OwnedItem 实例；同名道具受 MaxStack 限制。
+        /// 旅伴：交给 CompanionSystem 招进来（已拥有则升 1 级），不记进道具的 Owned/叠层——
+        /// 旅伴的属性修正由它自己的模型与羁绊源持有，与道具回滚是两套。
         /// </summary>
         public bool TryBuy(int index)
         {
             if (!CanBuy(index)) return false;
 
-            ItemDef def = _slots[index].Item;
-            int price = _slots[index].Price;
+            ShopSlot slot = _slots[index];
+            int price = slot.Price;
 
             // 先判钱再改任何状态：金币不够时属性、叠层、格子都不能动
             if (!_run.TrySpend(price)) return false;
 
-            var owned = new OwnedItem(def);
-            _owned.Add(owned);
-            _stacks[def.Id] = StackOf(def.Id) + 1;
-            ApplyStats(owned);
+            if (slot.Companion != null)
+            {
+                // CanBuy 已经问过 CanRecruit，正常不会走到失败；真失败了就把钱退回去，
+                // 不让人花金币买到一格空的货位
+                if (_companions == null || _companions.Recruit(slot.Companion) == null)
+                {
+                    _run.AddCoins(price);
+                    return false;
+                }
+            }
+            else
+            {
+                ItemDef def = slot.Item;
+                var owned = new OwnedItem(def);
+                _owned.Add(owned);
+                _stacks[def.Id] = StackOf(def.Id) + 1;
+                ApplyStats(owned);
+            }
 
             _spent += price;
             _events?.Publish(new CoinChanged(_run.Coins, -price));
@@ -282,10 +361,19 @@ namespace Game.Controllers
         /// </summary>
         public int PriceOf(ItemDef def, int waveIndex)
         {
-            if (def == null) return 0;
+            return def == null ? 0 : PriceOf(def.BasePrice, waveIndex);
+        }
 
+        /// <summary>旅伴的价格。Companion 表没有价格列，基准价写在 CompanionBasePrice，上浮公式与道具同一条。</summary>
+        public int CompanionPriceOf(int waveIndex)
+        {
+            return PriceOf(CompanionBasePrice, waveIndex);
+        }
+
+        int PriceOf(int basePrice, int waveIndex)
+        {
             int wave = waveIndex < 1 ? 1 : waveIndex;
-            float raw = def.BasePrice * (1f + _priceGrowthPerWave * (wave - 1));
+            float raw = basePrice * (1f + _priceGrowthPerWave * (wave - 1));
             return Mathf.FloorToInt(raw + 0.5f);
         }
 
@@ -316,6 +404,30 @@ namespace Game.Controllers
                 ItemDef def = RollItem();
                 _slots[i] = def == null ? default : new ShopSlot(def, PriceOf(def, _waveIndex));
             }
+
+            OfferCompanion();
+        }
+
+        /// <summary>
+        /// 把固定货位换成旅伴。没有旅伴表、队伍已满或全员满级时留着原来抽到的道具：
+        /// 宁可只卖道具，也不要摆一格点了没反应的货。
+        /// 抽哪一个用抽卡那条 runRng，并按 Id 顺序排候选，同一种子得到同一个旅伴。
+        /// </summary>
+        void OfferCompanion()
+        {
+            if (_companions == null || _companionPool.Length == 0) return;
+
+            _companionOffers.Clear();
+            for (int i = 0; i < _companionPool.Length; i++)
+            {
+                CompanionDef def = _companionPool[i];
+                if (_companions.CanRecruit(def)) _companionOffers.Add(def);
+            }
+
+            if (_companionOffers.Count == 0) return;
+
+            CompanionDef offer = _companionOffers[RandomIndex(_companionOffers.Count)];
+            _slots[CompanionSlotIndex] = new ShopSlot(offer, CompanionPriceOf(_waveIndex));
         }
 
         ItemDef RollItem()

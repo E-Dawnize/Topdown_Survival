@@ -16,6 +16,9 @@ namespace Game.Systems.Weapons
         /// <summary>目标与射手几乎重合时的方向兜底距离阈值。</summary>
         const float MinAimDistance = 1e-4f;
 
+        /// <summary>GDD 5.1：弹道数上限 12。加成来自道具/羁绊，夹一下就不能靠堆属性把屏幕刷满弹道。</summary>
+        const int MaxProjectiles = 12;
+
         readonly EnemySystem _enemies;
         readonly ProjectileSystem _projectiles;
         readonly IRandom01 _rng;
@@ -57,7 +60,9 @@ namespace Game.Systems.Weapons
             float falloff = WeaponDamage.DistanceFalloff(distance, weapon.Range);
             float amount = WeaponDamage.Amount(weapon.BaseDamage, stats, isCrit, falloff);
 
-            int count = weapon.Projectiles > 0 ? weapon.Projectiles : 1;
+            int count = (weapon.Projectiles > 0 ? weapon.Projectiles : 1) + stats.BonusProjectiles;
+            if (count > MaxProjectiles) count = MaxProjectiles;
+            if (count < 1) count = 1;
 
             // 整束以瞄准方向为中心对称展开：3 发 10° 就是 -10° / 0° / +10°，
             // 不是从瞄准方向往一边铺，否则多发弹道的平均落点会偏，玩家会觉得"瞄准没用"

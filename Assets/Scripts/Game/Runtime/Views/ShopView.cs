@@ -250,18 +250,20 @@ namespace Game.Views
                     continue;
                 }
 
+                // 这一格卖的是道具还是旅伴，只看格子里装的是哪种 Def
                 ItemDef def = slot.Item;
+                CompanionDef companion = slot.Companion;
 
                 // 置灰的判据与导航用的是同一个方法：不会出现"看着买得起、方向键却选不中"的矛盾
                 bool buyable = IsPurchasable(i);
-                Color accent = RarityColor(def.Rarity);
+                Color accent = def != null ? RarityColor(def.Rarity) : CompanionColor;
 
                 card.Background.color = CardColor;
-                card.Name.text = def.Name;
+                card.Name.text = def != null ? def.Name : companion.Name;
                 card.Name.color = buyable ? accent : DimColor;
                 card.Price.text = slot.Price + " 金币";
                 card.Price.color = buyable ? accent : DimColor;
-                card.Description.text = def.Description ?? string.Empty;
+                card.Description.text = def != null ? def.Description ?? string.Empty : CompanionDescription(companion);
                 card.Description.color = buyable ? DescriptionColor : DimColor;
 
                 SetHighlight(card, i == _navigator.Selected);
@@ -319,6 +321,31 @@ namespace Game.Views
                 case ItemRarity.Epic: return new Color(0.72f, 0.43f, 1f);
                 case ItemRarity.Legendary: return new Color(1f, 0.79f, 0.26f);
                 default: return new Color(0.80f, 0.82f, 0.85f);
+            }
+        }
+
+        /// <summary>旅伴没有品质列（Companion.json 只有阵营），用一条固定的青色作为强调色。</summary>
+        static readonly Color CompanionColor = new Color(0.45f, 0.88f, 0.78f);
+
+        /// <summary>
+        /// 旅伴卡的说明。CompanionDef 没有 Description 列，这里用表里真有的信息拼：
+        /// 阵营（羁绊靠它统计）与重复购买的规则。文字只在重画卡片时拼，不在每帧。
+        /// </summary>
+        static string CompanionDescription(CompanionDef def)
+        {
+            return "旅伴 · " + FactionName(def.Faction) + "阵营　重复购买升 1 级（上限 " + CompanionModel.MaxLevel + " 级）";
+        }
+
+        /// <summary>GDD 7.1 的阵营显示名。</summary>
+        static string FactionName(CompanionFaction faction)
+        {
+            switch (faction)
+            {
+                case CompanionFaction.Machine: return "机械";
+                case CompanionFaction.Ghost: return "幽灵";
+                case CompanionFaction.Beast: return "野兽";
+                case CompanionFaction.Doll: return "玩偶";
+                default: return "无";
             }
         }
 

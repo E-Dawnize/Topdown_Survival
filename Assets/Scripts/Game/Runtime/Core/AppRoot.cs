@@ -65,6 +65,7 @@ namespace Game.Core
 
         public EnemySystem Enemies { get; private set; }
         public WeaponSystem Weapons { get; private set; }
+        public CompanionSystem Companions { get; private set; }
         public RunController RunController { get; private set; }
         public WaveController Waves { get; private set; }
         public PickupSystem Pickups { get; private set; }
@@ -258,6 +259,10 @@ namespace Game.Core
 
             AddStartingWeapon();
 
+            // 旅伴在商店之前建：商店的固定货位要问它"能不能再招"，买进来以后羁绊也归它重算。
+            // 旅伴的武器与暴击闪避共用战斗那条流（一局只有一条随机源）。
+            Companions = new CompanionSystem(Player, Enemies, Config.Weapons, combatRandom, Events);
+
             // 刷怪不要自己的随机流：按 I2-2 的要求走战斗那条流，一局只有一条随机源，
             // "固定种子 + 固定输入 = 相同结果"只需守一处。
             Waves = new WaveController(Enemies, Config.Enemies, combatRandom);
@@ -267,12 +272,14 @@ namespace Game.Core
             Pickups = new PickupSystem(Player, Run, Events, combatRandom);
 
             float priceGrowth = Config.GetBalance("PriceGrowthPerWave", 0.1f);
-            Shop = new ShopController(Player, Run, Config.Items, Events, combatRandom, priceGrowth);
+            Shop = new ShopController(Player, Run, Config.Items, Events, combatRandom, priceGrowth, Companions,
+                Config.Companions);
 
-            RunController = new RunController(Player, Run, Config.Waves, Events, worldSeed, _characterId, Shop);
+            RunController = new RunController(Player, Run, Config.Waves, Events, worldSeed, _characterId, Shop,
+                Companions);
 
             Simulation = new RunSimulation(Player, PlayerController, Enemies, Weapons, Events, RunController, Waves,
-                Pickups);
+                Pickups, Companions);
             EnemyViews = new EnemyViewPool(_prefabMap, transform, Enemies, Events);
             ProjectileViews = new ProjectileViewPool(_prefabMap, Weapons.Projectiles, transform);
             PickupViews = new PickupViewPool(_prefabMap, Pickups, transform);

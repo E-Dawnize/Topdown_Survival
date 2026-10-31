@@ -18,10 +18,13 @@ namespace Game.Core
     ///   1 RunController.Tick      —— 局状态机先跑：波次计时、死亡收尾、商店。
     ///                                它不在这里推进就没有"现在是不是战斗中"这个前提
     ///   2 PlayerController.Tick   —— 玩家先动，本步的敌人追击与开火都用移动后的位置
+    ///   2.5 CompanionSystem.TickMovement —— 旅伴追的是玩家本步的新位置。敌人不看旅伴，
+    ///                               所以它只影响旅伴自己的位置（以及同一段中自己的开火）
     ///   3 EnemySystem.Tick        —— 追击 + 分离 + 接触伤害，顺带记录上一步位置供插值
     ///   4 SpatialGrid.Rebuild     —— 必须在敌人移动之后、武器结算之前，
     ///                                否则武器读到的是上一 tick 的敌人位置
     ///   5 WeaponSystem.Tick       —— 投射物先走完这一段再开火，命中判定读的是第 4 步的快照
+    ///     CompanionSystem.TickWeapons —— 旅伴的武器接在玩家之后、同一步内开火，不开线程也不用协程
     ///   6 清理死亡               —— 武器这一步才可能打死人，不能在它之前清；掉落物也在这里生成
     ///   7 PickupSystem.Tick      —— 排在清理之后：这一步刚掉的金币当场就参与磁吸判定，
     ///                                玩家踩在尸体上不用等下一步
@@ -48,6 +51,9 @@ namespace Game.Core
         readonly WaveController _waves;
         readonly PickupSystem _pickups;
 
+        /// <summary>旅伴队伍。可空：只装玩家战斗的单测不需要它；为空时这一步与 I2-5 完全一致。</summary>
+        readonly CompanionSystem _companions;
+
         // 死亡事件只发一次：RunLoop 每帧都会再调 Tick，靠这个位挡住重复发布
         bool _playerDiedPublished;
 
@@ -66,7 +72,7 @@ namespace Game.Core
         /// </summary>
         public RunSimulation(PlayerModel player, PlayerController playerController, EnemySystem enemies,
             WeaponSystem weapons, IEventBus events, RunController run = null, WaveController waves = null,
-            PickupSystem pickups = null)
+            PickupSystem pickups = null, CompanionSystem companions = null)
         {
             _player = player;
             _playerController = playerController;
@@ -76,6 +82,7 @@ namespace Game.Core
             _run = run;
             _waves = waves;
             _pickups = pickups;
+            _companions = companions;
         }
 
         public PlayerModel Player => _player;
@@ -85,6 +92,7 @@ namespace Game.Core
         public RunController Run => _run;
         public WaveController Waves => _waves;
         public PickupSystem Pickups => _pickups;
+        public CompanionSystem Companions => _companions;
 
         /// <summary>推进一个固定步长。input 按引用传，消费过的按钮位会被清掉。</summary>
         public void Tick(float dt, ref InputSnapshot input)
@@ -134,6 +142,10 @@ namespace Game.Core
         {
             _playerController.Tick(dt, ref input);
 
+            // 2.5 旅伴跟随。排在玩家移动之后、敌人移动之前：追的是玩家本步的位置，
+            // 而敌人系统只读写敌人自己的模型，旅伴的位置与它无关。
+            _companions?.TickMovement(_player.Position, dt);
+
             Vector2 playerPos = _player.Position;
             _enemies.Tick(playerPos, dt);
 
@@ -147,9 +159,14 @@ namespace Game.Core
                 _player.Stats[StatType.Attack],
                 _player.Stats[StatType.CritChance],
                 _player.Stats[StatType.CritDamage],
-                _player.Stats[StatType.AttackSpeed]);
+                _player.Stats[StatType.AttackSpeed],
+                Mathf.RoundToInt(_player.Stats[StatType.ProjectileCount]));
 
             _weapons.Tick(playerPos, ViewSnapshot.DirectionOf(_player.Facing), _shooterStats, dt);
+
+            // 旅伴开火：与玩家同一步、玩家之后。它们的武器各自带自己的 Shooter（UnitId），
+            // 所以伤害、击退、击杀归属都记在旅伴头上，不会算成玩家。
+            _companions?.TickWeapons(playerPos, dt);
 
             CleanupDeadEnemies();
 

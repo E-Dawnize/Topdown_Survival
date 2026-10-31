@@ -216,6 +216,34 @@ namespace Game.Tests
         }
 
         [Test]
+        public void BondProjectileBonusAddsToTheWeaponTableCount()
+        {
+            // 机械 4 件羁绊的"弹道 +1"走 ShooterStats.BonusProjectiles：武器表 1 发 → 实际 2 发
+            EnemySystem enemies = NewEnemies();
+            WeaponSystem weapons = NewWeapons(enemies);
+            weapons.AddWeapon(BowDef(projectiles: 1));
+            enemies.Spawn(DummyDef(), new Vector2(5f, 0f));
+
+            Step(weapons, enemies, new ShooterStats(0f, 0f, 1.5f, 0f, bonusProjectiles: 1), 1);
+
+            Assert.AreEqual(2, weapons.Projectiles.Count, "羁绊 +1 弹道应当在武器表的基础上多发一发");
+        }
+
+        [Test]
+        public void ProjectileBonusIsCappedAtTheGddMaximum()
+        {
+            // GDD 5.1 弹道数上限 12：武器表 3 发 + 加成 20 不会变成 23 发
+            EnemySystem enemies = NewEnemies();
+            WeaponSystem weapons = NewWeapons(enemies);
+            weapons.AddWeapon(BowDef(projectiles: 3));
+            enemies.Spawn(DummyDef(), new Vector2(5f, 0f));
+
+            Step(weapons, enemies, new ShooterStats(0f, 0f, 1.5f, 0f, bonusProjectiles: 20), 1);
+
+            Assert.AreEqual(12, weapons.Projectiles.Count, "弹道数被夹到 GDD 的上限 12");
+        }
+
+        [Test]
         public void SpreadFansProjectilesSymmetricallyAroundAim()
         {
             // SpreadDeg 是相邻弹道的夹角：3 发 10° 铺成 -10° / 0° / +10°

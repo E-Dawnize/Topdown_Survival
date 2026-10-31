@@ -237,5 +237,49 @@ namespace Game.Tests
             Assert.IsNull(enemies.Get(slot), "打死的敌人必须从槽位里摘掉");
             Assert.AreEqual(0, enemies.AliveCount);
         }
+        [Test]
+        public void CompanionArrowsKillInTheSameStepAndTheKillBelongsToTheCompanion()
+        {
+            // 旅伴接进主循环之后的最小闭环：跟随与开火确实被 RunSimulation 推着走，
+            // 而且击杀归属经过清理阶段的 UnitDied 后仍然记在旅伴头上（不是玩家）。
+            var events = new EventBus();
+            var player = new PlayerModel(1000f, 5f, 15f, 0.15f, 2f, ArenaHalf);
+            var enemies = new EnemySystem(player, ArenaHalf);
+
+            // 玩家不给武器：这一发只可能是旅伴打的，击杀归属没有第二种解释
+            var weapons = new WeaponSystem(enemies, new DeterministicRandom(WorldSeed), AppRoot.PlayerUnit, 256,
+                events);
+
+            var weaponTable = new Dictionary<string, WeaponDef> { ["Bow"] = BowDef() };
+            var companions = new CompanionSystem(player, enemies, weaponTable, new DeterministicRandom(WorldSeed),
+                events);
+            CompanionModel companion = companions.Recruit(new CompanionDef
+            {
+                Id = "IronBox", Name = "铁盒", Faction = CompanionFaction.Machine, WeaponId = "Bow",
+                FollowRadius = 1.6f, MaxHP = 40f
+            });
+
+            var simulation = new RunSimulation(player, new PlayerController(player, events), enemies, weapons, events,
+                null, null, null, companions);
+
+            // 16 血、不动的靶子放在射程内：弓一发 8 点，两发必死（掘到暴击则更快，结论一样）
+            int slot = enemies.Spawn(new EnemyDef
+            {
+                Id = "dummy", Name = "测试靶", Behaviour = EnemyBehaviourType.Chase,
+                HP = 16f, Damage = 0f, Speed = 0f, AttackRange = 1f, AttackInterval = 1f,
+                CoinDrop = 0, BodyRadius = 0.3f
+            }, new Vector2(4f, 0f));
+
+            var died = new List<UnitDied>();
+            events.Subscribe<UnitDied>(died.Add);
+
+            Run(simulation, Steps);
+
+            Assert.AreEqual(1, died.Count, "16 血的靶子应当被旅伴打死一只");
+            Assert.AreEqual(EnemySystem.UnitIdOf(slot), died[0].Unit);
+            Assert.AreEqual(companion.UnitId, died[0].Killer, "击杀应当归旅伴，不能算成玩家");
+            Assert.AreNotEqual(AppRoot.PlayerUnit, died[0].Killer, "玩家根本没开火，不该出现在击杀归属里");
+            Assert.IsNull(enemies.Get(slot), "清理阶段把尸体搞掉，与玩家击杀走同一条路径");
+        }
     }
 }

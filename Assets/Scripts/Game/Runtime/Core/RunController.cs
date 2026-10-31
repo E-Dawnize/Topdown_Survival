@@ -3,6 +3,7 @@ using Game.Config;
 using Game.Controllers;
 using Game.Core.Events;
 using Game.Model;
+using Game.Systems;
 
 namespace Game.Core
 {
@@ -47,13 +48,19 @@ namespace Game.Core
         /// </summary>
         readonly ShopController _shop;
 
+        /// <summary>
+        /// 旅伴队伍。可空：只测流程的用例不需要它。本类只在换局时清空它（见 StartRun）——
+        /// 旅伴的跟随、开火与羁绊都不经过流程状态机。
+        /// </summary>
+        readonly CompanionSystem _companions;
+
         float _waveElapsed;
         float _runElapsed;
         int _kills;
         int _wavesCleared;
 
         public RunController(PlayerModel player, RunState run, IReadOnlyList<WaveDef> waves, IEventBus events,
-            ulong seed, string characterId, ShopController shop = null)
+            ulong seed, string characterId, ShopController shop = null, CompanionSystem companions = null)
         {
             _player = player ?? throw new System.ArgumentNullException(nameof(player));
             _run = run ?? throw new System.ArgumentNullException(nameof(run));
@@ -62,6 +69,7 @@ namespace Game.Core
             _seed = seed;
             _characterId = characterId;
             _shop = shop;
+            _companions = companions;
 
             if (_waves.Count == 0)
             {
@@ -136,6 +144,10 @@ namespace Game.Core
 
             // 上一局攒的保底计数不能带到新的一局：连空 8 次是这一局的运气，不是下一局的起点
             _shop?.ResetForNewRun();
+
+            // 队伍与羁绊也是跨局状态：羁绊加成留在玩家属性上，新的一局会带着上一局的数值开场。
+            // 正式重开是场景重载，这条路径给同一个进程里的重开（测试与调试）兼底。
+            _companions?.ResetForNewRun();
 
             _events.Publish(new RunStarted(_seed, _characterId));
             StartWave(1);
