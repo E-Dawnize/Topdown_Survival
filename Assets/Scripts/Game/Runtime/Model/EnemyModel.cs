@@ -17,6 +17,13 @@ namespace Game.Model
         public Vector2 Velocity;
 
         /// <summary>
+        /// 击退冲量，单位是速度（米/秒），和 Velocity 是两份东西。
+        /// Velocity 每步都由追击与分离力重算，把冲量写进去等于每帧清一次；
+        /// 分开存以后，冲量按 EnemySystem 的速率自己衰减，追击的稳定性与它无关。
+        /// </summary>
+        public Vector2 Knockback;
+
+        /// <summary>
         /// 本步移动前的位置。渲染层在 PrevPosition 与 Position 之间插值，
         /// 否则固定步长的阶梯位移落到 Transform 上就是一段一顿。
         /// </summary>

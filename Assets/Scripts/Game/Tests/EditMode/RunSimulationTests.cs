@@ -175,6 +175,48 @@ namespace Game.Tests
         }
 
         [Test]
+        public void PlayerDeathIsPublishedOnceAndStopsSimulation()
+        {
+            var events = new EventBus();
+            var player = new PlayerModel(10f, 5f, 15f, 0.15f, 2f, ArenaHalf);
+            var enemies = new EnemySystem(player, ArenaHalf);
+            var weapons = new WeaponSystem(enemies, new DeterministicRandom(WorldSeed), AppRoot.PlayerUnit, 16, events);
+            var simulation = new RunSimulation(player, new PlayerController(player, events), enemies, weapons, events);
+
+            // 贴脸的高伤害怪：攻击间隔 0.2 秒、伤害 50，第一步就能把 10 血打空
+            var killer = new EnemyDef
+            {
+                Id = "test_killer", Name = "测试杀手", Behaviour = EnemyBehaviourType.Chase,
+                HP = 100f, Damage = 50f, Speed = 3f, AttackRange = 1f, AttackInterval = 0.2f,
+                CoinDrop = 0, BodyRadius = 0.35f
+            };
+            enemies.Spawn(killer, new Vector2(0.5f, 0f));
+
+            int died = 0;
+            events.Subscribe<PlayerDied>(_ => died++);
+
+            var input = new InputSnapshot { Move = new Vector2(1f, 0f) };
+            for (int i = 0; i < 120; i++)
+            {
+                simulation.Tick(Dt, ref input);
+            }
+
+            Assert.IsTrue(player.IsDead, "10 血挨 50 点接触伤害，第一步就该死");
+            Assert.AreEqual(1, died, "PlayerDied 只能发一次");
+
+            Vector2 deathPosition = player.Position;
+            var stillPressing = new InputSnapshot { Move = new Vector2(1f, 0f) };
+            for (int i = 0; i < 60; i++)
+            {
+                simulation.Tick(Dt, ref stillPressing);
+            }
+
+            Assert.AreEqual(deathPosition.x, player.Position.x, 1e-6f, "死后模拟不再推进，玩家不该再被输入挪动");
+            Assert.AreEqual(deathPosition.y, player.Position.y, 1e-6f, "死后模拟不再推进，玩家不该再被输入挪动");
+            Assert.AreEqual(1, died, "死了以后再走 60 步也不该重发死亡事件");
+        }
+
+        [Test]
         public void KillingBlowRemovesEnemyFromSystem()
         {
             // 打死以后由清理阶段 Remove：槽位被释放、存活数下降，不会在场上留下 200 个空对象

@@ -2,12 +2,13 @@ using System.Collections.Generic;
 using Game.Config;
 using Game.Core.Events;
 using Game.Model;
+using Game.Systems.Weapons;
 using UnityEngine;
 
 namespace Game.Systems
 {
     /// <summary>
-    /// 敌人追击 + 邻格分离力 + 接触伤害。只管推进行为，不刷怪也不删怪：
+    /// 敌人追击 + 邻格分离力 + 接触伤害 + 击退冲量衰减。只管推进行为，不刷怪也不删怪：
     /// 生成与移除由外部（波次、清理阶段）调 Spawn / Remove；打死后也得外部调 Remove，
     /// 系统不自己清尸体——免得"谁该看到尸体"这种时序问题隐式藏在系统里。
     ///
@@ -26,9 +27,22 @@ namespace Game.Systems
         /// <summary>黄金角。两个敌人完全重合时按槽位号取一个固定方向散开，避免除零也避免永远叠在一起。</summary>
         const float GoldenAngle = 2.39996323f;
 
+        /// <summary>
+        /// 击退冲量每秒衰减多少米/秒。线性衰减到 0：一次命中的冲量在 0.2 秒上下归零，
+        /// 短到不会把敌人推出战团，也长到能看出"这一下是被打退的"。
+        /// </summary>
+        const float KnockbackDecay = 24f;
+
         readonly SpatialGrid _grid = new SpatialGrid();
         readonly PlayerModel _player;
         readonly float _arenaHalfExtent;
+
+        /// <summary>
+        /// 接触伤害的闪避骰子。可空：没注入随机流时把玩家的 Dodge 按 0 处理，
+        /// 而不是照 Dodge 传参再喂一个恒为 0 的骰——那样有闪避属性就会变成必定闪避。
+        /// 正式装配（AppRoot）一定注入；武器单测与敌人单测可以只测追击。
+        /// </summary>
+        readonly IRandom01 _dodgeRng;
 
         // 每步的邻格查询结果复用同一个容器：这条路径每 tick 调「敌人数」次，自己 new 就是稳定 GC
         readonly List<int> _neighbors = new List<int>(16);
@@ -36,10 +50,11 @@ namespace Game.Systems
         EnemyModel[] _slots = new EnemyModel[64];
         int _aliveCount;
 
-        public EnemySystem(PlayerModel player, float arenaHalfExtent)
+        public EnemySystem(PlayerModel player, float arenaHalfExtent, IRandom01 dodgeRng = null)
         {
             _player = player ?? throw new System.ArgumentNullException(nameof(player));
             _arenaHalfExtent = arenaHalfExtent;
+            _dodgeRng = dodgeRng;
         }
 
         /// <summary>
@@ -130,13 +145,20 @@ namespace Game.Systems
 
             enemy.Velocity = chase + separationVelocity;
 
+            // 冲量衰减在这里而不是命中时一次性算完：命中那一刻只给初速，
+            // 每步按固定速率减到 0，所以同一发箭不管命中时帧率多少，退的距离都一样。
+            enemy.Knockback = Vector2.MoveTowards(enemy.Knockback, Vector2.zero, KnockbackDecay * dt);
+
             // 移动前记一笔，渲染层拿 PrevPosition 与 Position 插值
             enemy.PrevPosition = enemy.Position;
 
             // 位置 = 速度积分 + 位置松解。后者必要：几十个敌人围住玩家时推速有上限，
             // 只靠速度分离总残余一点互相插进去（实测最小间距只有身体直径的 6 成），
             // 松解把这点残余重叠每步直接推开一半，稳态下身体不互相插。
-            enemy.Position = ClampToArena(enemy.Position + enemy.Velocity * dt + separationOffset);
+            // 击退作为第三个分量直接加到位移上：追击与分离力那两份不受它影响，
+            // 冲量过去了敌人就还是按原来的速度追人。
+            enemy.Position = ClampToArena(
+                enemy.Position + (enemy.Velocity + enemy.Knockback) * dt + separationOffset);
 
             if (enemy.AttackTimer > 0f)
             {
@@ -216,13 +238,23 @@ namespace Game.Systems
 
         void ApplyContactDamage(int slot, EnemyModel enemy, Vector2 direction)
         {
-            // 护甲与闪避仍按 0 传：闪避骰子该由调用方用 runRng 掷，系统内部不许自己开随机流。
-            // 真按 _player.Stats[StatType.Dodge] 传而骰子恒为 0，会变成"只要有闪避属性就必定闪避"。
+            // 闪避骰子在这里掷：DamageResolver 是纯函数，随机流不许开在结算里面，
+            // 否则"固定种子 + 固定输入 = 相同结果"就不成立了。
+            // 没注入随机流时连 Dodge 一起按 0 传（见 _dodgeRng 的注释）。
+            float dodge = 0f;
+            float dodgeRoll = 0f;
+            if (_dodgeRng != null)
+            {
+                dodge = _player.Stats[StatType.Dodge];
+                dodgeRoll = _dodgeRng.Next01();
+            }
+
+            // 护甲还是按 0 传：玩家属性表里的 Armor 目前没有任何来源，等装备接进来再改这一处。
             var damage = new DamageInfo(enemy.ContactDamage, DamageType.Physical, UnitIdOf(slot), direction,
                 0f, false, DamageFlags.Dodgeable);
-            var target = new DamageTarget(_player.HP, 0f, 0f, _player.IsInvulnerable);
+            var target = new DamageTarget(_player.HP, 0f, dodge, _player.IsInvulnerable);
 
-            DamageResult result = DamageResolver.Resolve(damage, target, 0f);
+            DamageResult result = DamageResolver.Resolve(damage, target, dodgeRoll);
             _player.HP = result.RemainingHp;
         }
 

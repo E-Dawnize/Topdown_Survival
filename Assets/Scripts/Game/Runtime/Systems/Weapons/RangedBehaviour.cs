@@ -74,8 +74,9 @@ namespace Game.Systems.Weapons
                 float angle = firstAngle + i * stepRad;
                 var direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
 
-                // 击退属于 I1-10 的命中反馈，这里只把字段传出去，先填 0
-                DamageInfo damage = WeaponDamage.Compose(amount, _shooter, direction, isCrit, 0f);
+                // 击退强度按本次命中的伤害换算：大伤害推得远（换算在 WeaponDamage.KnockbackSpeed）
+                DamageInfo damage = WeaponDamage.Compose(amount, _shooter, direction, isCrit,
+                    WeaponDamage.KnockbackSpeed(amount));
                 if (!_projectiles.Spawn(shooterPosition, direction, speed, maxDistance, damage, weapon.Pierce))
                 {
                     // 池被打满：这一枪剩下的弹道就没了，冷却照常起算，不因为丢了弹道而卡住下一枪

@@ -1,4 +1,5 @@
 using Game.Config;
+using Game.Core;
 using Game.Core.Events;
 using Game.Model;
 using UnityEngine;
@@ -20,8 +21,17 @@ namespace Game.Systems.Weapons
         /// <summary>衰减下限 50%，超过 120% 之后一直是这个值，不会掉到 0——否则擦边命中和空过没有区别。</summary>
         const float FalloffFloor = 0.5f;
 
-        /// <summary>GDD 5.2：跳字只在暴击和大于 20 时显示，避免糊屏。</summary>
-        const float ShowNumberAbove = 20f;
+        /// <summary>
+        /// 每点伤害换多少击退初速（米/秒）。武器表还没有击退列，先按伤害比例算：
+        /// 8 点伤害的箭给 4 米/秒，与 EnemySystem 的衰减速率配起来退 0.3 米上下。
+        /// </summary>
+        const float KnockbackPerDamage = 0.5f;
+
+        /// <summary>
+        /// 单次命中与叠加后的击退初速上限。同一步里多发箭打中同一个身体时，
+        /// 不封顶会把它推出半个场子，下一帧的分离力也会跟着抖。
+        /// </summary>
+        public const float MaxKnockbackSpeed = 6f;
 
         /// <summary>
         /// 距离衰减：射程 100% 内不衰减，从 100% 到 120% 线性降到 50%，再远保持 50%。
@@ -41,6 +51,18 @@ namespace Game.Systems.Weapons
 
         /// <summary>暴击判定。roll 由调用方掷好，∈[0,1)；恰好相等算暴击，与闪避边界同一套约定。</summary>
         public static bool RollCrit(float roll, in ShooterStats stats) => roll < stats.CritChance;
+
+        /// <summary>
+        /// 击退初速。按伤害换算，大伤害推得远，符合直觉，也不用为了几个数去改表结构。
+        /// 不掷骰：同样的伤害永远同样的击退，单测能把距离钉死。
+        /// </summary>
+        public static float KnockbackSpeed(float amount)
+        {
+            if (amount <= 0f) return 0f;
+
+            float speed = amount * KnockbackPerDamage;
+            return speed > MaxKnockbackSpeed ? MaxKnockbackSpeed : speed;
+        }
 
         /// <summary>暴击倍率，不暴击是 1。</summary>
         public static float CritMultiplier(bool isCrit, in ShooterStats stats) => isCrit ? stats.CritDamage : 1f;
@@ -62,13 +84,13 @@ namespace Game.Systems.Weapons
             DamageType type = DamageType.Physical;
 
             DamageFlags flags = DamageFlags.Dodgeable | DamageFlags.TriggerHit;
-            if (isCrit || amount > ShowNumberAbove) flags |= DamageFlags.ShowNumber;
+            if (isCrit || amount >= HitFeedback.BigHitThreshold) flags |= DamageFlags.ShowNumber;
 
             return new DamageInfo(amount, type, source, direction, knockback, isCrit, flags);
         }
 
         /// <summary>
-        /// 把一次命中写进敌人。只管扣血：存活标记与尸体清理归外部（EnemySystem.Remove 由清理阶段调），
+        /// 把一次命中写进敌人。只管扣血与冲量：存活标记与尸体清理归外部（EnemySystem.Remove 由清理阶段调），
         /// 武器在命中路径上顺手 Remove 会让"谁该看见尸体"变成隐式时序问题。
         /// 护甲、闪避从敌人的 StatBlock 现读，不缓存——以后敌人加 buff 就自动生效。
         /// </summary>
@@ -84,8 +106,27 @@ namespace Game.Systems.Weapons
             enemy.HP = result.RemainingHp;
 
             // 击杀归属在伤害结算这一刻才能确定，清理阶段拿不到，所以在这里落一笔
-            if (result.Applied > 0f) enemy.LastDamageSource = damage.Source;
+            if (result.Applied > 0f)
+            {
+                enemy.LastDamageSource = damage.Source;
+                ApplyKnockback(enemy, damage);
+            }
             return result;
+        }
+
+        /// <summary>
+        /// 冲量按速度累加并封顶。闪避、无敌帧、已经死掉的目标都不改冲量：
+        /// 只有真正掉了血的那一下才能把人推开，否则“明明闪了却被推一下”很难解释。
+        /// </summary>
+        static void ApplyKnockback(EnemyModel enemy, in DamageInfo damage)
+        {
+            if (damage.Knockback <= 0f) return;
+            if (damage.Direction.sqrMagnitude < 1e-8f) return;
+
+            Vector2 impulse = enemy.Knockback + damage.Direction.normalized * damage.Knockback;
+            enemy.Knockback = impulse.sqrMagnitude > MaxKnockbackSpeed * MaxKnockbackSpeed
+                ? impulse.normalized * MaxKnockbackSpeed
+                : impulse;
         }
     }
 }

@@ -237,10 +237,12 @@ namespace Game.Core
             _spawnRandom = new DeterministicRandom(worldSeed ^ SpawnSeedSalt);
             _spawnPool = BuildSpawnPool();
 
-            Enemies = new EnemySystem(Player, Player.ArenaHalfExtent);
-
-            // 武器、暴击、闪避用同一条战斗流：同一种子 + 同一输入 = 同一次暴击
+            // 武器、暴击、闪避、接触伤害用同一条战斗流：同一种子 + 同一输入 = 同一次暴击、同一次闪避。
+            // 这条流必须在敌人系统之前建好：接触伤害的闪避骰子从它里掷。
             var combatRandom = new DeterministicRandom(worldSeed);
+
+            Enemies = new EnemySystem(Player, Player.ArenaHalfExtent, combatRandom);
+
             Weapons = new WeaponSystem(Enemies, combatRandom, PlayerUnit, 256, Events);
 
             AddStartingWeapon();

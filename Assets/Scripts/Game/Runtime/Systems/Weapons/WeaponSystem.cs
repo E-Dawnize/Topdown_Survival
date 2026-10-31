@@ -23,6 +23,10 @@ namespace Game.Systems.Weapons
 
         readonly EnemySystem _enemies;
         readonly IRandom01 _rng;
+
+        /// <summary>命中事件往哪发。近战行为需要它才能和远程一样发 UnitDamaged；可空：武器单测不用事件总线。</summary>
+        readonly IEventBus _events;
+
         readonly List<WeaponModel> _weapons = new List<WeaponModel>(4);
 
         public WeaponSystem(EnemySystem enemies, IRandom01 rng, UnitId shooter, int projectileCapacity = 256,
@@ -30,6 +34,7 @@ namespace Game.Systems.Weapons
         {
             _enemies = enemies ?? throw new ArgumentNullException(nameof(enemies));
             _rng = rng ?? throw new ArgumentNullException(nameof(rng));
+            _events = events;
             Shooter = shooter;
             Projectiles = new ProjectileSystem(rng, projectileCapacity, events);
         }
@@ -91,7 +96,7 @@ namespace Game.Systems.Weapons
 
         IWeaponBehaviour NewRanged() => new RangedBehaviour(_enemies, Projectiles, _rng, Shooter);
 
-        IWeaponBehaviour NewMelee() => new MeleeBehaviour(_enemies, _rng, Shooter);
+        IWeaponBehaviour NewMelee() => new MeleeBehaviour(_enemies, _rng, Shooter, _events);
 
         static void RequireKind(WeaponDef def, WeaponKind expected)
         {

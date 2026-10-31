@@ -28,6 +28,9 @@ namespace Game.Systems.Weapons
         readonly IRandom01 _rng;
         readonly UnitId _shooter;
 
+        /// <summary>命中事件往哪发。可空：武器单测不需要事件总线，传 null 就只扣血不发事件。</summary>
+        readonly IEventBus _events;
+
         // 每步的候选与"本次挥砍已经打过谁"都复用同一个容器：近战每 tick 都在查，自己 new 就是稳定 GC
         readonly List<int> _candidates = new List<int>(16);
         readonly List<int> _hitThisSwing = new List<int>(8);
@@ -40,11 +43,12 @@ namespace Game.Systems.Weapons
         // 暴击在挥砍开始就掷好：同一次挥砍打三个敌人应该一起暴或一起不暴
         bool _swingCrit;
 
-        public MeleeBehaviour(EnemySystem enemies, IRandom01 rng, UnitId shooter)
+        public MeleeBehaviour(EnemySystem enemies, IRandom01 rng, UnitId shooter, IEventBus events = null)
         {
             _enemies = enemies ?? throw new ArgumentNullException(nameof(enemies));
             _rng = rng ?? throw new ArgumentNullException(nameof(rng));
             _shooter = shooter;
+            _events = events;
         }
 
         public void Tick(WeaponModel weapon, Vector2 shooterPosition, Vector2 facing, in ShooterStats stats, float dt)
@@ -116,9 +120,18 @@ namespace Game.Systems.Weapons
                 float falloff = WeaponDamage.DistanceFalloff(distance, weapon.Range);
                 float amount = WeaponDamage.Amount(weapon.BaseDamage, stats, _swingCrit, falloff);
 
-                // 击退属于 I1-10 的命中反馈，这里只把字段传出去，先填 0
-                DamageInfo damage = WeaponDamage.Compose(amount, _shooter, direction, _swingCrit, 0f);
-                WeaponDamage.ApplyToEnemy(enemy, damage, _rng.Next01());
+                // 击退强度按本次命中的伤害换算，与远程共用同一个换算（见 WeaponDamage.KnockbackSpeed）
+                DamageInfo damage = WeaponDamage.Compose(amount, _shooter, direction, _swingCrit,
+                    WeaponDamage.KnockbackSpeed(amount));
+                DamageResult result = WeaponDamage.ApplyToEnemy(enemy, damage, _rng.Next01());
+
+                // 和远程一样只在真扣到血时发：闪避与无敌帧不该让受击表现亮一下。
+                // 不发这个事件，刀砍中就没有定格、震屏和受击变亮，只有远程才有反馈。
+                if (result.Applied > 0f)
+                {
+                    _events?.Publish(new UnitDamaged(EnemySystem.UnitIdOf(slot), _shooter,
+                        result.Applied, _swingCrit, result.RemainingHp));
+                }
 
                 // 记在命中之后再写：被闪避掉也算"这次挥砍已经判过它"，否则同一次挥砍会对着闪避目标连骰
                 _hitThisSwing.Add(slot);

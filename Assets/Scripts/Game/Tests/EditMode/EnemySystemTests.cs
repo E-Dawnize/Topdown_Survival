@@ -1,6 +1,8 @@
 using Game.Config;
+using Game.Core;
 using Game.Model;
 using Game.Systems;
+using Game.Systems.Weapons;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -50,6 +52,12 @@ namespace Game.Tests
                 _state = _state * 1664525u + 1013904223u;
                 return (_state >> 8) * (1f / 16777216f);
             }
+        }
+
+        /// <summary>骰子恒为 0 的随机源：配 Dodge = 1 时 0 &lt; 1 必然走闪避分支，骰子本身钉死。</summary>
+        sealed class ZeroRoll : IRandom01
+        {
+            public float Next01() => 0f;
         }
 
         /// <summary>照主循环第 6、7 步走：先敌人移动，再重建格子。</summary>
@@ -200,6 +208,68 @@ namespace Game.Tests
             Assert.GreaterOrEqual(distance, 1.4f, "追过头了：距离 " + distance.ToString("F3"));
             Assert.LessOrEqual(distance, 1.55f, "没走到接触距离：距离 " + distance.ToString("F3"));
             Assert.AreEqual(1, system.AliveCount);
+        }
+
+        [Test]
+        public void HitKnockbackDecaysBackIntoChase()
+        {
+            var player = MakePlayer();
+            var system = new EnemySystem(player, ArenaHalf);
+
+            // 放在 30 米外，冲量衰减完以后还有足够的距离看它继续追
+            EnemyDef def = ChaseDef(speed: 3f, attackRange: 1.5f);
+            int slot = system.Spawn(def, new Vector2(30f, 0f));
+            EnemyModel enemy = system.Get(slot);
+
+            // 一次 10 点伤害的命中：冲量朝 +x，把敌人往远离玩家的方向推
+            float knockback = WeaponDamage.KnockbackSpeed(10f);
+            DamageInfo damage = WeaponDamage.Compose(10f, AppRoot.PlayerUnit, Vector2.right, false, knockback);
+            WeaponDamage.ApplyToEnemy(enemy, damage, 1f);
+
+            Assert.Greater(enemy.Knockback.x, 0f, "命中方向是 +x，冲量也该朝 +x");
+
+            Vector2 playerPos = Vector2.zero;
+            system.Tick(playerPos, Dt);
+
+            Assert.Less(enemy.Velocity.x, 0f, "追击速度不能被冲量覆盖：Velocity 仍然指着玩家");
+            Assert.Greater(enemy.Position.x, 30f, "这一步应该被冲量推得离玩家更远");
+
+            // 冲量按固定速率线性衰减，0.2 秒上下归零
+            RunSteps(system, playerPos, 60);
+            Assert.AreEqual(0f, enemy.Knockback.sqrMagnitude, 1e-6f,
+                "冲量该衰减到 0，不能一直留着把人越推越远");
+
+            Vector2 before = enemy.Position;
+            system.Tick(playerPos, Dt);
+            Assert.Less(enemy.Position.x, before.x, "冲量没了以后该继续朝玩家移动");
+        }
+
+        [Test]
+        public void DodgeOneAvoidsEveryContactHit()
+        {
+            var player = MakePlayer(1000f);
+            player.Stats.SetBase(StatType.Dodge, 1f);
+
+            var system = new EnemySystem(player, ArenaHalf, new ZeroRoll());
+            system.Spawn(ChaseDef(damage: 20f, attackInterval: 0.2f), Vector2.zero);
+
+            // 5 秒里按 0.2 秒的间隔本该挨二十多下
+            RunSteps(system, Vector2.zero, 300);
+
+            Assert.AreEqual(1000f, player.HP, 1e-3f, "Dodge = 1 时接触伤害必须每次都被闪掉");
+        }
+
+        [Test]
+        public void ZeroDodgeStillTakesContactDamageAgainstSameRoll()
+        {
+            // 同一条零骰子，Dodge = 0 时该照常扣血：证明“开始掷骰”本身没把结算改坏
+            var player = MakePlayer(1000f);
+            var system = new EnemySystem(player, ArenaHalf, new ZeroRoll());
+            system.Spawn(ChaseDef(damage: 20f, attackInterval: 0.2f), Vector2.zero);
+
+            RunSteps(system, Vector2.zero, 1);
+
+            Assert.AreEqual(980f, player.HP, 1e-3f, "Dodge = 0 时第一步就该结第一次 20 点接触伤害");
         }
 
         static EnemyModel FindAlive(EnemySystem system, int index)
