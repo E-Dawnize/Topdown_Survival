@@ -19,6 +19,16 @@ namespace Game.Tests
             public Pong(int value) { Value = value; }
         }
 
+        /// <summary>
+        /// 每个订阅者一个实例。直接写 `_ => total++` 是错的：同一个作用域里的 lamba 捕获同一个闭包，
+        /// 循环 50 次得到的是同一个委托实例，会被去重成一个订阅者。
+        /// </summary>
+        sealed class Counter
+        {
+            public int Total;
+            public void Handle(Ping _) => Total++;
+        }
+
         [Test]
         public void PublishIsDeferredUntilFlush()
         {
@@ -151,16 +161,20 @@ namespace Game.Tests
         {
             var bus = new EventBus();
             const int n = 50;
-            int total = 0;
+            var counters = new Counter[n];
             for (int i = 0; i < n; i++)
             {
-                bus.Subscribe<Ping>(_ => total++);
+                counters[i] = new Counter();
+                bus.Subscribe<Ping>(counters[i].Handle);
             }
 
             bus.Publish(new Ping(0));
             bus.Flush();
 
-            Assert.AreEqual(n, total);
+            for (int i = 0; i < n; i++)
+            {
+                Assert.AreEqual(1, counters[i].Total, $"订阅者 {i} 的收到次数不对");
+            }
             Assert.AreEqual(n, bus.SubscriptionCount);
         }
     }
