@@ -168,7 +168,6 @@ namespace Game.Core
             PlayerView view = instance.GetComponent<PlayerView>();
             if (view != null)
             {
-                view.Bind(Player);
                 PlayerView = view;
             }
 
@@ -213,7 +212,6 @@ namespace Game.Core
         {
             if (view == null) return;
             PlayerView = view;
-            view.Bind(Player);
         }
 
         public void BindCameraRig(CameraRig rig)
