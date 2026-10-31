@@ -10,6 +10,9 @@ namespace Game.Views
     /// 位置一律走 PrevPosition → Position 的插值，不读 EnemyModel.Position 的最终值直接写 Transform：
     /// 模拟是 60Hz 阶梯，渲染帧率不是 60 的整数倍时直接写会看到一顿一顿。
     /// 朝向看速度方向（敌人没有单独的朝向字段，测速方向就是它要去的地方）。
+    ///
+    /// 脚下还有一块接触阴影盘（见 ContactShadowDisc）：它是实例的子节点，跟着父节点走，
+    /// 所以本类每帧只写身体这一个 Transform；受击变亮也只写身体那个渲染器的属性块。
     /// </summary>
     public sealed class UnitView : MonoBehaviour
     {
@@ -24,6 +27,9 @@ namespace Game.Views
         Renderer _renderer;
         MaterialPropertyBlock _mpb;
         bool _hasBaseColor;
+
+        // 脚下阴影盘。挂在实例下当子节点，位置随父节点跟走，Sync 里不需要碰它
+        Transform _shadow;
 
         Color _tint = Color.white;
         Color _appliedColor;
@@ -56,6 +62,12 @@ namespace Game.Views
 
             transform.position = new Vector3(enemy.Position.x, transform.position.y, enemy.Position.y);
             ApplyColor(_tint);
+
+            // 阴影盘只建一次：池里复用的是同一份预制体的实例，身体半径不会变，没必要每次绑定都重建
+            if (_shadow == null && _renderer != null)
+            {
+                _shadow = ContactShadowDisc.Attach(transform, _renderer.sharedMaterial, enemy.Radius);
+            }
         }
 
         /// <summary>受击变亮。调用方（EnemyViewPool）从 UnitDamaged 事件里拿到目标槽位再转到这里。</summary>

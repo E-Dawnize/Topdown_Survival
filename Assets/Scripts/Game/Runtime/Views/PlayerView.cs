@@ -7,6 +7,9 @@ namespace Game.Views
     /// <summary>
     /// 把渲染快照写到 Transform，并在冲刺时闪一下颜色。
     /// 不读 Model：位置与朝向都是插值后的渲染值，由 RunLoop 供给。
+    ///
+    /// 进场景时给自己挂一圈描边壳（见 PlayerOutline）：200 个敌人围上来时，
+    /// 浅蓝的胶囊会被敌群淹掉，靠描边壳才能一眼找到玩家。壳是子节点，位置朝向自动跟随。
     /// </summary>
     public sealed class PlayerView : MonoBehaviour
     {
@@ -31,6 +34,9 @@ namespace Game.Views
                 _baseColor = _renderer.sharedMaterial.GetColor("_BaseColor");
                 _hasBaseColor = true;
             }
+
+            // 描边壳与冲刺闪色是两回事：壳有自己的材质与属性块，闪色只改身体那个渲染器
+            PlayerOutline.Attach(transform, _renderer);
         }
 
         void OnEnable()

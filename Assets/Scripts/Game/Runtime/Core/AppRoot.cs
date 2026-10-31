@@ -25,12 +25,31 @@ namespace Game.Core
         /// <summary>战斗测试场。I2 之后这里不再自动刷怪，靠波次系统。</summary>
         public const string TestArenaSceneName = "Test_Arena";
 
-        /// <summary>Test_Arena 一进来刷多少个敌人。50 个是 I1-11 压测的基线量级。</summary>
-        public const int TestArenaEnemyCount = 50;
+        /// <summary>
+        /// Test_Arena 一进来刷多少个敌人。200 是 I1-11 压测的验收量级（同屏 200 敌），
+        /// 只改这一个常量就能回到轻量试玩：刷怪点、视图池、性能都是按它推算的。
+        /// </summary>
+        public const int TestArenaEnemyCount = 200;
 
-        /// <summary>临时刷怪环：玩家周围 8~15 米。太近会一开始就贴身，太远在 8 米射程外看不见开火。</summary>
-        const float SpawnRadiusMin = 8f;
-        const float SpawnRadiusMax = 15f;
+        /// <summary>
+        /// 投射物池容量。验收要求 200 敌 + 400 发同时在场，取 512 留一倍余量：
+        /// 多弹道武器一次开火就是好几发，容量卡在 400 会让"刚好够用"变成偶发丢弹（丢弹只打一条日志，很难发现）。
+        /// </summary>
+        public const int ProjectilePoolCapacity = 512;
+
+        /// <summary>
+        /// 黄金角（弧度）。刷怪时逐个转 137.5°：等角铺开的一串点不会落在同几条射线上，
+        /// 比随机撒点均匀得多（同样 200 个点，这里的最近两点 1.5 米，随机撒点的最近两点中位数只有 0.08 米）。
+        /// </summary>
+        const float GoldenAngleRad = 2.39996323f;
+
+        /// <summary>
+        /// 临时刷怪环：玩家周围 8~15 米。太近会一开始就贴身，太远在 8 米射程外看不见开火。
+        /// 公开给测试用：刷怪环装不装得下 200 个敌人是靠这两个半径算出来的，测试要用同一组值。
+        /// </summary>
+        public const float SpawnRadiusMin = 8f;
+
+        public const float SpawnRadiusMax = 15f;
 
         /// <summary>
         /// RunSeed 没被设置过（0）时用的世界种子。用固定常量而不是读系统时间：
@@ -243,7 +262,7 @@ namespace Game.Core
 
             Enemies = new EnemySystem(Player, Player.ArenaHalfExtent, combatRandom);
 
-            Weapons = new WeaponSystem(Enemies, combatRandom, PlayerUnit, 256, Events);
+            Weapons = new WeaponSystem(Enemies, combatRandom, PlayerUnit, ProjectilePoolCapacity, Events);
 
             AddStartingWeapon();
 
@@ -283,7 +302,7 @@ namespace Game.Core
         /// <summary>
         /// 临时入口，I2 的波次系统会取代它：正式流程里刷什么、刷多少、什么时候刷归 WaveController。
         /// 这里手动撒一批，好让"玩家自动射箭、敌群追人、被打掉血"在一个场景里就能看到。
-        /// 位置取玩家周围 8~15 米的一圈，怪种从敌人表里随机；随机走固定种子的流，可复现。
+        /// 位置按下面的刷怪环公式铺开，怪种从敌人表里随机；随机走固定种子的流，可复现。
         /// </summary>
         public void SpawnTestEnemies(int count)
         {
@@ -294,17 +313,44 @@ namespace Game.Core
             }
 
             Vector2 origin = Player.Position;
+
+            // 整个环带一起转：换种子时刷怪圈的样子跟着变，但不改变点的分布均匀度
+            float phase = _spawnRandom.Range(0f, Mathf.PI * 2f);
+
             for (int i = 0; i < count; i++)
             {
-                float angle = _spawnRandom.Range(0f, Mathf.PI * 2f);
-                float radius = _spawnRandom.Range(SpawnRadiusMin, SpawnRadiusMax);
-                var offset = new Vector2(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius);
-
+                Vector2 offset = TestSpawnRingOffset(i, count, phase, SpawnRadiusMin, SpawnRadiusMax);
                 EnemyDef def = _spawnPool[_spawnRandom.NextInt(_spawnPool.Length)];
                 Enemies.Spawn(def, origin + offset);
             }
 
             Debug.Log($"[AppRoot] 刷了 {count} 个测试敌人（{TestArenaSceneName} 临时入口，I2 由波次系统接管）");
+        }
+
+        /// <summary>
+        /// 刷怪环上的第 index 个点（相对玩家）：角度按黄金角逐个转开，半径按面积均匀分布。
+        ///
+        /// 不按"每个敌人各随机一个角度与半径"撒点：200 个点里会有十几对撞在一起（中位数 12 对相距 0.3 米内，
+        /// 最近的一对 0.01 米），出生那一刻就重叠成一团，分离力要跑几百步才推得开——压测一开局看到的就是一团。
+        /// 铺均匀以后最小间距约 1.5 米，比两个身体加起来还宽；之后它们自己挤向玩家、挤成一圈，
+        /// 那才是压力测试要的稳态（围在玩家身边互相推挤），而不是出生就叠在一起。
+        /// </summary>
+        /// <param name="index">0..count-1。</param>
+        /// <param name="count">这一批刷多少。</param>
+        /// <param name="phase">整圈的角度偏移，调用方从种子流水里取，保证同一种子复现同一批位置。</param>
+        public static Vector2 TestSpawnRingOffset(int index, int count, float phase, float radiusMin,
+            float radiusMax)
+        {
+            if (count <= 0) return Vector2.zero;
+
+            // 半径按 t 的平方根映射：这样点在环带上的面密度才均匀，
+            // 直接按 t 线性插值会让点朝内圈挤（外圈周长更大、站位更多）。
+            // +0.5 让首尾两个点也各占半格，不贴到环带的两个极端上。
+            float t = (index + 0.5f) / count;
+            float radius = Mathf.Sqrt(Mathf.Lerp(radiusMin * radiusMin, radiusMax * radiusMax, t));
+
+            float angle = phase + index * GoldenAngleRad;
+            return new Vector2(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius);
         }
 
         void CreateHud()
