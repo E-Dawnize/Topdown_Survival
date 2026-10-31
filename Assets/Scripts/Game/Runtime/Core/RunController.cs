@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Game.Config;
+using Game.Controllers;
 using Game.Core.Events;
 using Game.Model;
 
@@ -40,13 +41,19 @@ namespace Game.Core
         readonly ulong _seed;
         readonly string _characterId;
 
+        /// <summary>
+        /// 波间商店。可空：只测状态机的用例不需要它，那样进商店只停在 Shop 态、没有货可买。
+        /// 有它的时候本类只负责"什么时候开、什么时候关"，抽卡与买卖归 ShopController。
+        /// </summary>
+        readonly ShopController _shop;
+
         float _waveElapsed;
         float _runElapsed;
         int _kills;
         int _wavesCleared;
 
         public RunController(PlayerModel player, RunState run, IReadOnlyList<WaveDef> waves, IEventBus events,
-            ulong seed, string characterId)
+            ulong seed, string characterId, ShopController shop = null)
         {
             _player = player ?? throw new System.ArgumentNullException(nameof(player));
             _run = run ?? throw new System.ArgumentNullException(nameof(run));
@@ -54,6 +61,7 @@ namespace Game.Core
             _events = events ?? throw new System.ArgumentNullException(nameof(events));
             _seed = seed;
             _characterId = characterId;
+            _shop = shop;
 
             if (_waves.Count == 0)
             {
@@ -100,6 +108,9 @@ namespace Game.Core
             _kills = 0;
             _wavesCleared = 0;
 
+            // 上一局攒的保底计数不能带到新的一局：连空 8 次是这一局的运气，不是下一局的起点
+            _shop?.ResetForNewRun();
+
             _events.Publish(new RunStarted(_seed, _characterId));
             StartWave(1);
         }
@@ -124,12 +135,16 @@ namespace Game.Core
         /// 关掉商店、开下一波。返回 false 表示当前不在商店态（重复调用、或已经在战斗里），
         /// 调用方不用自己判 Phase。
         /// </summary>
-        /// <param name="coinsSpent">本间商店花掉的金币。商店还没做，现在固定 0。</param>
-        public bool CloseShop(int coinsSpent = 0)
+        public bool CloseShop()
         {
             if (Phase != RunPhase.Shop) return false;
 
-            _events.Publish(new ShopClosed(coinsSpent));
+            // 花费从商店自己读，不让调用方报数：UI、调试键与测试调的是同一个入口，
+            // 谁传都得对，而"实际花了多少"只有 ShopController 真的知道。
+            int spent = _shop != null ? _shop.Spent : 0;
+            _shop?.Close();
+
+            _events.Publish(new ShopClosed(spent));
             StartWave(_run.WaveIndex + 1);
             return true;
         }
@@ -173,6 +188,9 @@ namespace Game.Core
             }
 
             Phase = RunPhase.Shop;
+
+            // 先把货备好再发 ShopOpened：订阅方（将来的商店 UI）收到事件时读到的已经是这一间的 6 格
+            _shop?.OpenShop(index);
             _events.Publish(new ShopOpened(index));
         }
 

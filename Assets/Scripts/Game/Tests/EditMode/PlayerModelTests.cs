@@ -52,6 +52,7 @@ namespace Game.Tests
             Assert.AreEqual(0.05f, player.Stats[StatType.CritChance], 1e-6f, "暴击率默认 5%");
             Assert.AreEqual(1.5f, player.Stats[StatType.CritDamage], 1e-6f, "暴击伤害默认 150%");
             Assert.AreEqual(0f, player.Stats[StatType.AttackSpeed], 0f, "攻速加成默认 0");
+            Assert.AreEqual(2.5f, player.Stats[StatType.PickupRadius], 1e-6f, "拾取范围默认 2.5 米（GDD 5.1），磁吸读它");
         }
 
         [Test]

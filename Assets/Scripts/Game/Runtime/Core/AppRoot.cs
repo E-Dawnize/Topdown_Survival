@@ -65,6 +65,8 @@ namespace Game.Core
         public WeaponSystem Weapons { get; private set; }
         public RunController RunController { get; private set; }
         public WaveController Waves { get; private set; }
+        public PickupSystem Pickups { get; private set; }
+        public ShopController Shop { get; private set; }
         public RunSimulation Simulation { get; private set; }
         public EnemyViewPool EnemyViews { get; private set; }
         public ProjectileViewPool ProjectileViews { get; private set; }
@@ -246,9 +248,18 @@ namespace Game.Core
             // 刷怪不要自己的随机流：按 I2-2 的要求走战斗那条流，一局只有一条随机源，
             // "固定种子 + 固定输入 = 相同结果"只需守一处。
             Waves = new WaveController(Enemies, Config.Enemies, combatRandom);
-            RunController = new RunController(Player, Run, Config.Waves, Events, worldSeed, _characterId);
 
-            Simulation = new RunSimulation(Player, PlayerController, Enemies, Weapons, Events, RunController, Waves);
+            // 掉落与商店也共用这一条 runRng（技术方案 7.5）：代价是商店抽卡会挪动后续的暴击序列，
+            // 换来的是"一局只有一条随机源要复现"。
+            Pickups = new PickupSystem(Player, Run, Events, combatRandom);
+
+            float priceGrowth = Config.GetBalance("PriceGrowthPerWave", 0.1f);
+            Shop = new ShopController(Player, Run, Config.Items, Events, combatRandom, priceGrowth);
+
+            RunController = new RunController(Player, Run, Config.Waves, Events, worldSeed, _characterId, Shop);
+
+            Simulation = new RunSimulation(Player, PlayerController, Enemies, Weapons, Events, RunController, Waves,
+                Pickups);
             EnemyViews = new EnemyViewPool(_prefabMap, transform, Enemies, Events);
             ProjectileViews = new ProjectileViewPool(_prefabMap, Weapons.Projectiles, transform);
         }

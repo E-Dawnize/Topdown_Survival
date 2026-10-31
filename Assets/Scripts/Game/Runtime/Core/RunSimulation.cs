@@ -22,13 +22,15 @@ namespace Game.Core
     ///   4 SpatialGrid.Rebuild     —— 必须在敌人移动之后、武器结算之前，
     ///                                否则武器读到的是上一 tick 的敌人位置
     ///   5 WeaponSystem.Tick       —— 投射物先走完这一段再开火，命中判定读的是第 4 步的快照
-    ///   6 清理死亡               —— 武器这一步才可能打死人，不能在它之前清
-    ///   7 WaveController.Tick     —— 刷怪排在清理之后：本步刚被打死的怪已经腾出槽位与存活数，
+    ///   6 清理死亡               —— 武器这一步才可能打死人，不能在它之前清；掉落物也在这里生成
+    ///   7 PickupSystem.Tick      —— 排在清理之后：这一步刚掉的金币当场就参与磁吸判定，
+    ///                                玩家踩在尸体上不用等下一步
+    ///   8 WaveController.Tick    —— 刷怪排在清理之后：本步刚被打死的怪已经腾出槽位与存活数，
     ///                                同屏上限算的是这一帧真实的存活数，不是上一步的
-    ///   8 Events.Flush            —— 整步结束再分发，订阅方不会读到半更新的状态
+    ///   9 Events.Flush           —— 整步结束再分发，订阅方不会读到半更新的状态
     ///
-    /// 没有战局控制器时（只装配战斗的单测）就是第 2~6 步一直跑；有的话只有 Battle 态才跑这五步，
-    /// Shop 与 GameOver 态只剩第 1 步与第 8 步。RunController 在这些态里仍然要被 Tick：
+    /// 没有战局控制器时（只装配战斗的单测）就是第 2~8 步一直跑；有的话只有 Battle 态才跑这七步，
+    /// Shop 与 GameOver 态只剩第 1 步与第 9 步。RunController 在这些态里仍然要被 Tick：
     /// CloseShop / StartRun 是外部直接调的，它们发出的 ShopClosed / WaveStarted / RunStarted
     /// 也要靠末尾的 Flush 分发出去，否则"跳过商店"按下去会像没反应。
     ///
@@ -44,6 +46,7 @@ namespace Game.Core
         readonly IEventBus _events;
         readonly RunController _run;
         readonly WaveController _waves;
+        readonly PickupSystem _pickups;
 
         // 死亡事件只发一次：RunLoop 每帧都会再调 Tick，靠这个位挡住重复发布
         bool _playerDiedPublished;
@@ -57,11 +60,13 @@ namespace Game.Core
         ShooterStats _shooterStats;
 
         /// <summary>
-        /// run 与 waves 可空：只测战斗的单测不必造一整套流程。两个都给上才是完整的一局；
-        /// 只给 run 时波次照常推进但没有敌人生成，只给 waves 时没有波次可刷。
+        /// run / waves / pickups 可空：只测战斗的单测不必造一整套流程。run 与 waves 都给上才是完整的一局；
+        /// 只给 run 时波次照常推进但没有敌人生成，只给 waves 时没有波次可刷；
+        /// pickups 为空时敌人照旧会死，只是不掉落。
         /// </summary>
         public RunSimulation(PlayerModel player, PlayerController playerController, EnemySystem enemies,
-            WeaponSystem weapons, IEventBus events, RunController run = null, WaveController waves = null)
+            WeaponSystem weapons, IEventBus events, RunController run = null, WaveController waves = null,
+            PickupSystem pickups = null)
         {
             _player = player;
             _playerController = playerController;
@@ -70,6 +75,7 @@ namespace Game.Core
             _events = events;
             _run = run;
             _waves = waves;
+            _pickups = pickups;
         }
 
         public PlayerModel Player => _player;
@@ -78,6 +84,7 @@ namespace Game.Core
         public WeaponSystem Weapons => _weapons;
         public RunController Run => _run;
         public WaveController Waves => _waves;
+        public PickupSystem Pickups => _pickups;
 
         /// <summary>推进一个固定步长。input 按引用传，消费过的按钮位会被清掉。</summary>
         public void Tick(float dt, ref InputSnapshot input)
@@ -146,7 +153,10 @@ namespace Game.Core
 
             CleanupDeadEnemies();
 
-            // 7 刷怪。排在清理之后：这一步被打死的怪已经不在场上了，同屏上限按真实存活数算。
+            // 7 掉落物。排在清理之后，本步刚掉的金币立刻参与磁吸判定
+            _pickups?.Tick(dt);
+
+            // 8 刷怪。排在清理之后：这一步被打死的怪已经不在场上了，同屏上限按真实存活数算。
             _waves?.Tick(dt, playerPos);
         }
 
@@ -159,7 +169,7 @@ namespace Game.Core
         }
 
         /// <summary>
-        /// 把这一步被打死的敌人从系统里摘掉。
+        /// 把这一步被打死的敌人从系统里摘掉，顺手掉一份战利品。
         /// 放在清理而不是命中路径上：命中时删会让"谁还能看见这个敌人"变成隐式时序问题，
         /// 而按槽位顺序遍历、只删当前槽位（Remove 只把本槽位置空，不挪动别的槽位），不会边遍历边错位。
         /// 放在 Flush 之前：这样同一步里 UnitDamaged 与 UnitDied 一批发出去，视图当帧就能回收，
@@ -172,8 +182,14 @@ namespace Game.Core
                 EnemyModel enemy = _enemies.Get(slot);
                 if (enemy == null || !enemy.IsAlive || !enemy.IsDead) continue;
 
+                Vector2 position = enemy.Position;
+
                 _events?.Publish(new UnitDied(EnemySystem.UnitIdOf(slot), enemy.LastDamageSource,
-                    enemy.Position.x, enemy.Position.y));
+                    position.x, position.y));
+
+                // 掉落与移除放在一起：只有这里知道"这个敌人这一步死了"，
+                // 散到别处（订阅 UnitDied）会晚一步，还可能因为事件重入导致同一只怪掉两次
+                _pickups?.DropEnemyLoot(position);
 
                 _enemies.Remove(slot);
             }

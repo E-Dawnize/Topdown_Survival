@@ -23,6 +23,9 @@ namespace Game.Model
         const float DefaultCritDamage = 1.5f;
         const float DefaultAttackSpeed = 0f;
 
+        /// <summary>拾取范围，GDD 5.1：金币与心的吸附半径 2.5 米。写在 StatBlock 里，拾取道具与 buff 才能改它。</summary>
+        const float DefaultPickupRadius = 2.5f;
+
         public Vector2 Position;
         public Vector2 Velocity;
         public Vector2 DashDirection;
@@ -53,6 +56,7 @@ namespace Game.Model
             Stats.SetBase(StatType.CritChance, DefaultCritChance);
             Stats.SetBase(StatType.CritDamage, DefaultCritDamage);
             Stats.SetBase(StatType.AttackSpeed, DefaultAttackSpeed);
+            Stats.SetBase(StatType.PickupRadius, DefaultPickupRadius);
 
             HP = maxHp;
             DashSpeed = dashSpeed;
