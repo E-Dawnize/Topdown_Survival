@@ -8,7 +8,6 @@ using Game.Systems;
 using Game.Systems.Weapons;
 using Game.Views;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 namespace Game.Core
 {
@@ -22,15 +21,6 @@ namespace Game.Core
         public const string PlayerPrefabId = "Player";
         public const string HudPrefabId = "HudCanvas";
 
-        /// <summary>战斗测试场。I2 之后这里不再自动刷怪，靠波次系统。</summary>
-        public const string TestArenaSceneName = "Test_Arena";
-
-        /// <summary>
-        /// Test_Arena 一进来刷多少个敌人。200 是 I1-11 压测的验收量级（同屏 200 敌），
-        /// 只改这一个常量就能回到轻量试玩：刷怪点、视图池、性能都是按它推算的。
-        /// </summary>
-        public const int TestArenaEnemyCount = 200;
-
         /// <summary>
         /// 投射物池容量。验收要求 200 敌 + 400 发同时在场，取 512 留一倍余量：
         /// 多弹道武器一次开火就是好几发，容量卡在 400 会让"刚好够用"变成偶发丢弹（丢弹只打一条日志，很难发现）。
@@ -38,27 +28,13 @@ namespace Game.Core
         public const int ProjectilePoolCapacity = 512;
 
         /// <summary>
-        /// 黄金角（弧度）。刷怪时逐个转 137.5°：等角铺开的一串点不会落在同几条射线上，
-        /// 比随机撒点均匀得多（同样 200 个点，这里的最近两点 1.5 米，随机撒点的最近两点中位数只有 0.08 米）。
-        /// </summary>
-        const float GoldenAngleRad = 2.39996323f;
-
-        /// <summary>
-        /// 临时刷怪环：玩家周围 8~15 米。太近会一开始就贴身，太远在 8 米射程外看不见开火。
-        /// 公开给测试用：刷怪环装不装得下 200 个敌人是靠这两个半径算出来的，测试要用同一组值。
-        /// </summary>
-        public const float SpawnRadiusMin = 8f;
-
-        public const float SpawnRadiusMax = 15f;
-
-        /// <summary>
         /// RunSeed 没被设置过（0）时用的世界种子。用固定常量而不是读系统时间：
         /// 同一份输入要能复现同一局，随机源必须能从外部钉死。
         /// </summary>
         public const ulong DefaultWorldSeed = 0x5EED1A2B3C4D5E6Ful;
 
-        /// <summary>刷怪的流与战斗的流分开：以后加一段刷怪逻辑不会改变暴击序列。</summary>
-        const ulong SpawnSeedSalt = 0x9E3779B97F4A7C15ul;
+        /// <summary>手动压测入口的流与战斗流分开：按一下它不改变这一局的暴击序列。</summary>
+        const ulong ManualSpawnSeedSalt = 0x9E3779B97F4A7C15ul;
 
         /// <summary>
         /// 玩家固定用这个 UnitId。敌人的 id 是槽位号 + 1（见 EnemySystem.UnitIdOf），
@@ -87,6 +63,8 @@ namespace Game.Core
 
         public EnemySystem Enemies { get; private set; }
         public WeaponSystem Weapons { get; private set; }
+        public RunController RunController { get; private set; }
+        public WaveController Waves { get; private set; }
         public RunSimulation Simulation { get; private set; }
         public EnemyViewPool EnemyViews { get; private set; }
         public ProjectileViewPool ProjectileViews { get; private set; }
@@ -95,11 +73,12 @@ namespace Game.Core
         public string ConfigError { get; private set; }
 
         CharacterDef _character;
-        DeterministicRandom _spawnRandom;
 
-        // 从敌人表拍下来的有序快照。字典的遍历顺序不是契约，先按 Id 排一次，
-        // 同一种子才会刷出同一批怪，而不是换台机器怪种就变了
-        EnemyDef[] _spawnPool;
+        // 手动压测入口（SpawnTestEnemies）用的怪种快照与随机流。字典遍历顺序不是契约，先按 Id 排一次，
+        // 同一种子才刷出同一批怪；这条流与战斗流分开，按一下压测入口不该改变这一局的暴击序列。
+        // 自动刷怪走 WaveController 与战斗流，与这两样无关。
+        DeterministicRandom _manualSpawnRandom;
+        EnemyDef[] _manualSpawnPool;
 
         void Awake()
         {
@@ -128,12 +107,10 @@ namespace Game.Core
             CreateCombat();
             CreateHud();
 
-            // 临时入口：I2 的波次系统会取代它。现在只在 Test_Arena 里自动撒一批敌人，
-            // Run 场景不刷——正式流程里刷怪归 WaveController，这里抢着刷会掩盖波次系统的行为。
-            if (SceneManager.GetActiveScene().name == TestArenaSceneName)
-            {
-                SpawnTestEnemies(TestArenaEnemyCount);
-            }
+            // 两个场景同一个入口：一进来就开局，波次系统自己刷怪。
+            // RunStarted / WaveStarted(1) 只是被投进队列，第一次 Flush（RunSimulation.Tick 末尾）才分发，
+            // 那时 HUD 已经订阅好了，一个事件都不会丢。
+            if (RunController != null) RunController.StartRun();
         }
 
         void OnDestroy()
@@ -253,8 +230,8 @@ namespace Game.Core
         void CreateCombat()
         {
             ulong worldSeed = RunSeed != 0 ? RunSeed : DefaultWorldSeed;
-            _spawnRandom = new DeterministicRandom(worldSeed ^ SpawnSeedSalt);
-            _spawnPool = BuildSpawnPool();
+            _manualSpawnRandom = new DeterministicRandom(worldSeed ^ ManualSpawnSeedSalt);
+            _manualSpawnPool = BuildManualSpawnPool();
 
             // 武器、暴击、闪避、接触伤害用同一条战斗流：同一种子 + 同一输入 = 同一次暴击、同一次闪避。
             // 这条流必须在敌人系统之前建好：接触伤害的闪避骰子从它里掷。
@@ -266,7 +243,12 @@ namespace Game.Core
 
             AddStartingWeapon();
 
-            Simulation = new RunSimulation(Player, PlayerController, Enemies, Weapons, Events);
+            // 刷怪不要自己的随机流：按 I2-2 的要求走战斗那条流，一局只有一条随机源，
+            // "固定种子 + 固定输入 = 相同结果"只需守一处。
+            Waves = new WaveController(Enemies, Config.Enemies, combatRandom);
+            RunController = new RunController(Player, Run, Config.Waves, Events, worldSeed, _characterId);
+
+            Simulation = new RunSimulation(Player, PlayerController, Enemies, Weapons, Events, RunController, Waves);
             EnemyViews = new EnemyViewPool(_prefabMap, transform, Enemies, Events);
             ProjectileViews = new ProjectileViewPool(_prefabMap, Weapons.Projectiles, transform);
         }
@@ -292,21 +274,15 @@ namespace Game.Core
                            "玩家不会攻击");
         }
 
-        EnemyDef[] BuildSpawnPool()
-        {
-            var pool = new List<EnemyDef>(Config.Enemies.Values);
-            pool.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
-            return pool.ToArray();
-        }
-
         /// <summary>
-        /// 临时入口，I2 的波次系统会取代它：正式流程里刷什么、刷多少、什么时候刷归 WaveController。
-        /// 这里手动撒一批，好让"玩家自动射箭、敌群追人、被打掉血"在一个场景里就能看到。
-        /// 位置按下面的刷怪环公式铺开，怪种从敌人表里随机；随机走固定种子的流，可复现。
+        /// Test_Arena 的手动压测入口（I1-11：同屏 200 敌不掉帧）。波次系统接管自动刷怪以后这里不再自动调用，
+        /// 只留给手动把同屏堆到 200 的场景（压测、试手感）。出生点公式用 WaveController.SpawnRingOffset，
+        /// 与正式刷怪是同一套，AppRoot 不再自己算环。
         /// </summary>
         public void SpawnTestEnemies(int count)
         {
-            if (Enemies == null || _spawnRandom == null || _spawnPool == null || _spawnPool.Length == 0)
+            if (Enemies == null || _manualSpawnRandom == null || _manualSpawnPool == null ||
+                _manualSpawnPool.Length == 0)
             {
                 Debug.LogWarning("[AppRoot] 刷怪条件没就绪（配置或敌人系统缺失），跳过");
                 return;
@@ -315,42 +291,23 @@ namespace Game.Core
             Vector2 origin = Player.Position;
 
             // 整个环带一起转：换种子时刷怪圈的样子跟着变，但不改变点的分布均匀度
-            float phase = _spawnRandom.Range(0f, Mathf.PI * 2f);
+            float phase = _manualSpawnRandom.Range(0f, Mathf.PI * 2f);
 
             for (int i = 0; i < count; i++)
             {
-                Vector2 offset = TestSpawnRingOffset(i, count, phase, SpawnRadiusMin, SpawnRadiusMax);
-                EnemyDef def = _spawnPool[_spawnRandom.NextInt(_spawnPool.Length)];
-                Enemies.Spawn(def, origin + offset);
+                Vector2 offset = WaveController.SpawnRingOffset(i, count, phase,
+                    WaveController.SpawnRadiusMin, WaveController.SpawnRadiusMax);
+                Enemies.Spawn(_manualSpawnPool[_manualSpawnRandom.NextInt(_manualSpawnPool.Length)], origin + offset);
             }
 
-            Debug.Log($"[AppRoot] 刷了 {count} 个测试敌人（{TestArenaSceneName} 临时入口，I2 由波次系统接管）");
+            Debug.Log($"[AppRoot] 手动刷了 {count} 个测试敌人（压测入口：不进波次流程，也不受同屏上限管）");
         }
 
-        /// <summary>
-        /// 刷怪环上的第 index 个点（相对玩家）：角度按黄金角逐个转开，半径按面积均匀分布。
-        ///
-        /// 不按"每个敌人各随机一个角度与半径"撒点：200 个点里会有十几对撞在一起（中位数 12 对相距 0.3 米内，
-        /// 最近的一对 0.01 米），出生那一刻就重叠成一团，分离力要跑几百步才推得开——压测一开局看到的就是一团。
-        /// 铺均匀以后最小间距约 1.5 米，比两个身体加起来还宽；之后它们自己挤向玩家、挤成一圈，
-        /// 那才是压力测试要的稳态（围在玩家身边互相推挤），而不是出生就叠在一起。
-        /// </summary>
-        /// <param name="index">0..count-1。</param>
-        /// <param name="count">这一批刷多少。</param>
-        /// <param name="phase">整圈的角度偏移，调用方从种子流水里取，保证同一种子复现同一批位置。</param>
-        public static Vector2 TestSpawnRingOffset(int index, int count, float phase, float radiusMin,
-            float radiusMax)
+        EnemyDef[] BuildManualSpawnPool()
         {
-            if (count <= 0) return Vector2.zero;
-
-            // 半径按 t 的平方根映射：这样点在环带上的面密度才均匀，
-            // 直接按 t 线性插值会让点朝内圈挤（外圈周长更大、站位更多）。
-            // +0.5 让首尾两个点也各占半格，不贴到环带的两个极端上。
-            float t = (index + 0.5f) / count;
-            float radius = Mathf.Sqrt(Mathf.Lerp(radiusMin * radiusMin, radiusMax * radiusMax, t));
-
-            float angle = phase + index * GoldenAngleRad;
-            return new Vector2(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius);
+            var pool = new List<EnemyDef>(Config.Enemies.Values);
+            pool.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
+            return pool.ToArray();
         }
 
         void CreateHud()

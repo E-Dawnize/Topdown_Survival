@@ -12,7 +12,7 @@ namespace Game.Tests
 
             Assert.AreEqual(0, run.Coins);
             Assert.AreEqual(1, run.WaveIndex);
-            Assert.AreEqual(5, run.WavesTotal);
+            Assert.AreEqual(0, run.WavesTotal, "总波数由 RunController 从配置表写入，模型不给默认值");
         }
 
         [Test]

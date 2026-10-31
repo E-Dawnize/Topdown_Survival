@@ -23,9 +23,9 @@ namespace Game.Tests
         const int EnemyCount = 50;
         const int Steps = 600;   // 10 秒
 
-        /// <summary>刷怪环 8~15 米，与 AppRoot.SpawnTestEnemies 一致。</summary>
-        const float SpawnRadiusMin = 8f;
-        const float SpawnRadiusMax = 15f;
+        /// <summary>刷怪环 8~15 米，与 WaveController 用的是同一组半径。</summary>
+        const float SpawnRadiusMin = WaveController.SpawnRadiusMin;
+        const float SpawnRadiusMax = WaveController.SpawnRadiusMax;
 
         static readonly ulong WorldSeed = AppRoot.DefaultWorldSeed;
 

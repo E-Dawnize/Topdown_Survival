@@ -16,7 +16,7 @@ namespace Game.Systems
     /// 这样同一 tick 里谁先被处理都不会改变结果——固定步长 + 固定种子的复现性靠这一条。
     /// 敌人按槽位号从小到大推进，纯为确定性，和格子里的顺序无关。
     /// </summary>
-    public sealed class EnemySystem : ISpatialGridSource
+    public sealed class EnemySystem : ISpatialGridSource, IEnemySpawnTarget
     {
         /// <summary>
         /// 分离速度相对追击速度的权重。小于 1 时挤在一起的敌人推不开彼此、会顶成一坨；
@@ -79,7 +79,7 @@ namespace Game.Systems
             return slot >= 0 && slot < _slots.Length ? _slots[slot] : null;
         }
 
-        /// <summary>外部生成。返回槽位号（= 空间网格的索引），敌人数组直接按它下标存。</summary>
+        /// <summary>外部生成（也是 IEnemySpawnTarget 的实现）。返回槽位号（= 空间网格的索引），敌人数组直接按它下标存。</summary>
         public int Spawn(EnemyDef def, Vector2 position)
         {
             if (def == null) throw new System.ArgumentNullException(nameof(def));

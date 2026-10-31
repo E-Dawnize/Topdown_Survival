@@ -1,18 +1,19 @@
-using Game.Core;
+using Game.Systems;
 using NUnit.Framework;
 using UnityEngine;
 
 namespace Game.Tests
 {
     /// <summary>
-    /// Test_Arena 临时刷怪环的分布（I1-11 的起点条件）。
+    /// 波次刷怪环的分布（I1-11 压测的起点条件，I2-2 抽进 WaveController 后仍然成立）。
     ///
-    /// 要验的就一件事：200 个敌人出生时不能叠在一起。出生就重叠的话，分离力要跑几百步才推得开，
+    /// 要验的就一件事：一批点出生时不能叠在一起。出生就重叠的话，分离力要跑几百步才推得开，
     /// 压测开局看到的那一团"不是压力测试要测的稳态"，量出来的帧时间也没意义。
+    /// 数量取 200：I1-11 的验收量级，同屏上限放宽到 200 时环带也得装得下。
     /// </summary>
     public class SpawnRingTests
     {
-        const int EnemyCount = AppRoot.TestArenaEnemyCount;   // 200
+        const int EnemyCount = 200;
 
         /// <summary>
         /// 两个敌人不重叠的最短距离：敌人表里最大的身体半径是 0.4（Charger），两个加起来 0.8。
@@ -25,8 +26,8 @@ namespace Game.Tests
             var points = new Vector2[count];
             for (int i = 0; i < count; i++)
             {
-                points[i] = AppRoot.TestSpawnRingOffset(i, count, phase, AppRoot.SpawnRadiusMin,
-                    AppRoot.SpawnRadiusMax);
+                points[i] = WaveController.SpawnRingOffset(i, count, phase, WaveController.SpawnRadiusMin,
+                    WaveController.SpawnRadiusMax);
             }
 
             return points;
@@ -65,8 +66,8 @@ namespace Game.Tests
             for (int i = 0; i < points.Length; i++)
             {
                 float radius = points[i].magnitude;
-                Assert.GreaterOrEqual(radius, AppRoot.SpawnRadiusMin - 1e-3f, "第 " + i + " 个敌人刷进了内圈");
-                Assert.LessOrEqual(radius, AppRoot.SpawnRadiusMax + 1e-3f, "第 " + i + " 个敌人刷出了外圈");
+                Assert.GreaterOrEqual(radius, WaveController.SpawnRadiusMin - 1e-3f, "第 " + i + " 个敌人刷进了内圈");
+                Assert.LessOrEqual(radius, WaveController.SpawnRadiusMax + 1e-3f, "第 " + i + " 个敌人刷出了外圈");
             }
         }
 
@@ -95,7 +96,7 @@ namespace Game.Tests
         public void EmptyRingRequestDoesNotThrow()
         {
             // 数量为 0 时调用方仍然会走一遍循环（count 来自配置/调试面板），不能在这里除零
-            Assert.AreEqual(Vector2.zero, AppRoot.TestSpawnRingOffset(0, 0, 0f, 8f, 15f));
+            Assert.AreEqual(Vector2.zero, WaveController.SpawnRingOffset(0, 0, 0f, 8f, 15f));
         }
     }
 }
