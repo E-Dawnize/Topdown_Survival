@@ -10,7 +10,7 @@ namespace Game.Core
     ///
     /// 渲染时用累加器余量在相邻两个模拟步之间插值：simulation 是阶梯的，
     /// 帧率与 60 不同步时直接写位置会看到一段一顿，带阻尼的相机跟随时尤其明显。
-    /// 玩家、敌人、投射物三层的插值用的是同一个 alpha。
+    /// 玩家、敌人、旅伴、投射物四层的插值用的是同一个 alpha。
     ///
     /// 命中定格（hitstop）也在这里：时钟停在定格上时本帧一步都不跑，但输入照常采样、
     /// LateUpdate 照常同步视图，所以"卡住"的是模拟而不是整帧。
@@ -108,7 +108,9 @@ namespace Game.Core
 
             // 敌人与投射物各自拿自己的 PrevPosition/Position 和同一个 alpha 插值。
             // 掉落物没有上一步位置可分（槽位会换绑），直接按快照写位置。
+            // 旅伴与敌人同一套插值：它也每步记 PrevPosition，渲染层只吃插值后的位置。
             root.EnemyViews?.Sync(alpha);
+            root.CompanionViews?.Sync(alpha);
             root.ProjectileViews?.Sync(alpha);
             root.PickupViews?.Sync();
 

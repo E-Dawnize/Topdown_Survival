@@ -30,6 +30,9 @@ namespace Game.Core
         /// <summary>主菜单场景名。必须在 Build Settings 里（见 ProjectSettings/EditorBuildSettings.asset）。</summary>
         public const string MainMenuScene = "MainMenu";
 
+        /// <summary>主菜单按开始之后进去的那一局。同样必须在 Build Settings 里。</summary>
+        public const string RunScene = "Run";
+
         public void ReloadCurrent()
         {
             Scene active = SceneManager.GetActiveScene();

@@ -72,6 +72,7 @@ namespace Game.Core
         public ShopController Shop { get; private set; }
         public RunSimulation Simulation { get; private set; }
         public EnemyViewPool EnemyViews { get; private set; }
+        public CompanionViewPool CompanionViews { get; private set; }
         public ProjectileViewPool ProjectileViews { get; private set; }
         public PickupViewPool PickupViews { get; private set; }
 
@@ -281,7 +282,14 @@ namespace Game.Core
             Simulation = new RunSimulation(Player, PlayerController, Enemies, Weapons, Events, RunController, Waves,
                 Pickups, Companions);
             EnemyViews = new EnemyViewPool(_prefabMap, transform, Enemies, Events);
-            ProjectileViews = new ProjectileViewPool(_prefabMap, Weapons.Projectiles, transform);
+
+            // 旅伴视图与敌人视图分开建：几何体是代码建的胶囊（不走 UnitPrefabMap），
+            // 槽位也属于 CompanionSystem 而不是 EnemySystem。
+            CompanionViews = new CompanionViewPool(_prefabMap, Companions, transform);
+
+            // 投射物视图把旅伴的投射物一起接进来：一个池按持有者换颜色与大小，
+            // 不为每个旅伴各建一套池（旅伴的武器系统是招募时才建出来的，池自己也每帧对齐）
+            ProjectileViews = new ProjectileViewPool(_prefabMap, Weapons.Projectiles, Companions, transform);
             PickupViews = new PickupViewPool(_prefabMap, Pickups, transform);
         }
 
