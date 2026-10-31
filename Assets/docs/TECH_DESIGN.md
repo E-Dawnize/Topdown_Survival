@@ -300,20 +300,22 @@ public sealed class ConfigDatabase {
 ```
 RunLoop.Update()
   1  InputService.Sample() → InputSnapshot
-  2  RunController.Tick(dt)           // 局状态、计时、暂停判断
+  2  RunController.Tick(dt)           // 局状态、计时、金币结算
   3  PlayerController.Tick(dt)
-  4  CombatController.Tick(dt)        // 武器、投射物、伤害结算
-  5  CompanionSystem.Tick(dt)
-  6  EnemySystem.Tick(dt)
-  7  SpatialGrid.Rebuild()
-  8  PickupSystem.Tick(dt)
-  9  WaveController.Tick(dt)
-  10 Model.Cleanup()                  // 处理死亡、移除、事件入队
+  4  EnemySystem.Tick(dt)             // 追击、分离、接触伤害
+  5  SpatialGrid.Rebuild()            // 必须在敌人移动之后、武器结算之前
+  6  PlayerWeapons.Tick(dt)           // 投射物推进 → 开火
+  7  CompanionWeapons.Tick(dt)        // 同上，同一步内
+  8  Cleanup()                        // 死亡移除与掉落生成
+  9  PickupSystem.Tick(dt)
+  10 WaveController.Tick(dt)
   11 EventBus.PublishPending()
-  12 UnitView.SyncAll()
+  12 UnitView.SyncAll()               // LateUpdate，按插值系数
 ```
 
-模拟固定步长 1/60，每帧最多 3 步，渲染不插值。顺序里三处不能动：空间哈希在移动之后（否则子弹打上一帧的位置）、清理在遍历之后（否则边遍历边删）、事件在整轮之后（否则订阅方读到半更新的状态）。
+实测实现比这份骨架多一层：`RunSimulation` 把 2–11 包成一次固定步长，主循环与集成测试走同一段代码；旅伴的移动（`CompanionSystem.TickMovement`）夹在玩家与敌人之间。
+
+模拟固定步长 1/60，每帧最多 3 步。渲染不跑在固定步长上：`LateUpdate` 用累加器余量在相邻两个模拟步之间插值，视图只吃插值结果。三处顺序不能动：空间哈希在移动之后（否则子弹打上一帧的位置）、清理在遍历之后（否则边遍历边删）、事件在整轮之后（否则订阅方读到半更新的状态）。
 
 ### 7.2 空间哈希
 
@@ -366,7 +368,9 @@ public readonly struct DamageInfo {
 
 ### 7.5 随机
 
-`xorshift128` 三条流：`runRng`（战斗与商店）、`metaRng`（局外）、`fxRng`（音调、粒子角度）。表现层永远不碰 `runRng`，否则加个粒子效果就能改变整局结果。
+实现只开了一条确定性随机流（`DeterministicRandom`，固定种子的 xorshift）：战斗、刷怪、掉落、商店抽卡共用。表现层不碰它。局外流 `metaRng` 与表现流 `fxRng` 还没做。
+
+代价写在前面：共用一条流意味着加一段刷怪逻辑会挪动后面的暴击序列。确定性仍在（同种子同输入同结果），但"两流分离"这个不变量没有实现。
 
 ### 7.6 对象池
 
@@ -421,12 +425,14 @@ public interface IWeaponBehaviour {
 ```
 冷却归零 → QueryNearest(射程, 优先级) → 朝向目标
   → 计算 n 发弹道，扇形展开 (n-1) × SpreadDeg
-  → 每发单独结算暴击，写入 DamageInfo
+  → 一次扳机掷一次暴击，同一枪的所有弹道共用，写入 DamageInfo
   → 生成投射物（速度、穿透数、生命周期从 Params 读）
   → 发 WeaponFired 事件
 ```
 
-投射物自己管移动与碰撞，命中后由 `DamageResolver` 结算，命中数达到穿透上限就回收。弓箭的初版参数：伤害 8、冷却 0.85 秒、射程 8 米、1 发、速度 18 米/秒、穿透 1。
+投射物自己管移动与碰撞，命中后由 `DamageResolver` 结算，命中数达到 `Pierce` 就回收。`Pierce` 是命中目标总数，1 表示只打第一个目标，不是"额外穿透数"。弓箭的初版参数：伤害 8、冷却 0.85 秒、射程 8 米、1 发、速度 18 米/秒、穿透 1。
+
+距离衰减现在恒为 1.0：锁定目标一定在射程内，而 GDD 5.2 规定射程 100% 内不衰减。公式（100%→120% 线性降到 50%）有单测，但接进游戏后不会生效。要让它有用，得让索敌范围大于射程，而那与 I1-7 的"射程外不开火"冲突，留到数值阶段再定。
 
 ### 8.3 砍刀（MeleeBehaviour）
 
