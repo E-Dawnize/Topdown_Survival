@@ -106,9 +106,11 @@ namespace Game.Core
 
             root.PlayerView?.Sync(new ViewSnapshot(pos, dir));
 
-            // 敌人与投射物各自拿自己的 PrevPosition/Position 和同一个 alpha 插值
+            // 敌人与投射物各自拿自己的 PrevPosition/Position 和同一个 alpha 插值。
+            // 掉落物没有上一步位置可分（槽位会换绑），直接按快照写位置。
             root.EnemyViews?.Sync(alpha);
             root.ProjectileViews?.Sync(alpha);
+            root.PickupViews?.Sync();
 
             if (root.Camera != null)
             {

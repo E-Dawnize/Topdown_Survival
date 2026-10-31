@@ -34,8 +34,6 @@ namespace Game.Core
                 _visible = !_visible;
             }
 
-            HandleDebugKeys();
-
             float dt = Time.unscaledDeltaTime;
             if (dt <= 0f) return;
 
@@ -50,20 +48,6 @@ namespace Game.Core
                 _windowStart = Time.unscaledTime;
                 _worstFrameMs = _frameMs;
             }
-        }
-
-        /// <summary>
-        /// F4 跳过当前商店。I2-5 的商店 UI 还没做，而 RunController 在波次之间会停在 Shop 态等 CloseShop，
-        /// 没有这个键就只能看着画面停住不动。调用的是商店 UI 以后也要调的那个入口，UI 接上就删掉这个键。
-        /// </summary>
-        void HandleDebugKeys()
-        {
-            if (Keyboard.current == null || !Keyboard.current.f4Key.wasPressedThisFrame) return;
-
-            RunController run = AppRoot.Instance?.RunController;
-            if (run == null || !run.CloseShop()) return;   // 不在商店态时按了也没事，不报错
-
-            Debug.Log("[DebugOverlay] F4 跳过商店（临时出口，等 I2-5 的商店 UI）");
         }
 
         void OnGUI()
@@ -108,7 +92,7 @@ namespace Game.Core
                 {
                     _sb.Append("Phase ").Append(root.RunController.Phase)
                         .Append("   Wave ").Append(root.Run.WaveIndex).Append('/').Append(root.Run.WavesTotal)
-                        .Append("   F4 跳过商店（临时）\n");
+                        .Append('\n');
                 }
 
                 InputService input = root.Input;

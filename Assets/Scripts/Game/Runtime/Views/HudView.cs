@@ -48,7 +48,7 @@ namespace Game.Views
 
             // 预制体里的字体是内置的 LegacyRuntime，没有中文字形；运行时换成系统字体。
             // 必须在建完两个覆盖层之后跑，新建的死亡提示才能一起拿到字体。
-            Font font = ResolveFont();
+            Font font = UiFont.Resolve();
             if (font == null) return;
             foreach (Text text in GetComponentsInChildren<Text>(true))
             {
@@ -272,15 +272,6 @@ namespace Game.Views
             {
                 _hintBackdrop.SetActive(false);
             }
-        }
-
-        static Font ResolveFont()
-        {
-            Font f = Font.CreateDynamicFontFromOSFont(
-                new[] { "Microsoft YaHei", "SimHei", "PingFang SC", "Noto Sans CJK SC", "Arial" }, 18);
-
-            if (f != null) return f;
-            return Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         }
     }
 }

@@ -1,5 +1,4 @@
 using Game.Config;
-using Game.Core;
 using Game.Systems.Weapons;
 using UnityEngine;
 
@@ -32,7 +31,7 @@ namespace Game.Views
         {
             _projectiles = projectiles;
             _parent = parent;
-            _sharedMaterial = ResolveSharedMaterial(prefabMap);
+            _sharedMaterial = SharedViewMaterial.FromPlayerPrefab(prefabMap);
 
             _views = new ProjectileView[_projectiles.Capacity];
             _visible = new bool[_views.Length];
@@ -98,21 +97,6 @@ namespace Game.Views
             view.Initialize(_sharedMaterial, BodyColor);
             _views[slot] = view;
             return view;
-        }
-
-        /// <summary>
-        /// 复用一个已在项目里的共享材质，不用 new Material(Shader.Find(...))：
-        /// 后者在打包时可能因为 shader 没被任何资产引用而被剔除，运行时变成粉色。
-        /// </summary>
-        static Material ResolveSharedMaterial(UnitPrefabMap prefabMap)
-        {
-            if (prefabMap == null) return null;
-
-            GameObject unitPrefab = prefabMap.Find(AppRoot.PlayerPrefabId);
-            if (unitPrefab == null) return null;
-
-            Renderer renderer = unitPrefab.GetComponentInChildren<Renderer>();
-            return renderer == null ? null : renderer.sharedMaterial;
         }
     }
 }

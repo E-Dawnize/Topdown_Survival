@@ -59,6 +59,7 @@ namespace Game.Core
         public PlayerController PlayerController { get; private set; }
         public PlayerView PlayerView { get; private set; }
         public HudView Hud { get; private set; }
+        public ShopView ShopUi { get; private set; }
         public CameraRig Camera { get; private set; }
 
         public EnemySystem Enemies { get; private set; }
@@ -70,6 +71,7 @@ namespace Game.Core
         public RunSimulation Simulation { get; private set; }
         public EnemyViewPool EnemyViews { get; private set; }
         public ProjectileViewPool ProjectileViews { get; private set; }
+        public PickupViewPool PickupViews { get; private set; }
 
         public bool ConfigOk { get; private set; }
         public string ConfigError { get; private set; }
@@ -108,6 +110,7 @@ namespace Game.Core
 
             CreateCombat();
             CreateHud();
+            CreateShopUi();
 
             // 两个场景同一个入口：一进来就开局，波次系统自己刷怪。
             // RunStarted / WaveStarted(1) 只是被投进队列，第一次 Flush（RunSimulation.Tick 末尾）才分发，
@@ -262,6 +265,7 @@ namespace Game.Core
                 Pickups);
             EnemyViews = new EnemyViewPool(_prefabMap, transform, Enemies, Events);
             ProjectileViews = new ProjectileViewPool(_prefabMap, Weapons.Projectiles, transform);
+            PickupViews = new PickupViewPool(_prefabMap, Pickups, transform);
         }
 
         /// <summary>
@@ -352,6 +356,27 @@ namespace Game.Core
             view.Bind(Player, Run);
             instance.SetActive(true);
             Hud = view;
+        }
+
+        /// <summary>
+        /// 商店界面（I2-5）。和其它 UI 一样先注入再激活：ShopView 在 OnEnable 里订阅
+        /// ShopOpened / ShopClosed，跳过一次就永远不弹了。面板本身由代码搭（见 ShopView），
+        /// 不占 UnitPrefabMap 的一条映射，也不往场景里放东西。
+        /// 它自己负责开商店时把输入切到 UI Map、关商店时切回 Player。
+        /// </summary>
+        void CreateShopUi()
+        {
+            // 带 RectTransform 建：Overlay Canvas 的根节点就是一张全屏矩形，
+            // 先建普通 Transform 再挂 Canvas 会被 Unity 换成 RectTransform，不如一开始就建对
+            var go = new GameObject("ShopCanvas", typeof(RectTransform));
+            go.transform.SetParent(transform, false);
+            go.SetActive(false);
+
+            var view = go.AddComponent<ShopView>();
+            view.Initialize(Events);
+            view.Bind(Shop, Run, RunController, Input);
+            go.SetActive(true);
+            ShopUi = view;
         }
 
         public void BindPlayerView(PlayerView view)

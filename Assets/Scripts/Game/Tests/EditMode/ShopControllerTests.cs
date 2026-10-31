@@ -295,6 +295,27 @@ namespace Game.Tests
         }
 
         [Test]
+        public void CanBuyAgreesWithTryBuyOnEverySlot()
+        {
+            // 商店界面用 CanBuy 决定置灰与方向键跳过，两处一旦不一致就会出现
+            // "看着能买、按下去没反应"。这里逐格把"问"与"做"的结论对一遍。
+            ShopController shop = Build(out _, out _, out _, coins: 30);   // 够买一件 25，第二件就不够
+            shop.OpenShop(1);
+
+            for (int i = 0; i < ShopController.SlotCount; i++)
+            {
+                bool canBuy = shop.CanBuy(i);
+                Assert.AreEqual(canBuy, shop.TryBuy(i), $"第 {i} 格：CanBuy 与 TryBuy 的结论必须一致");
+            }
+
+            Assert.IsFalse(shop.CanBuy(-1), "下标越界返回 false，不抛异常");
+            Assert.IsFalse(shop.CanBuy(ShopController.SlotCount));
+
+            shop.Close();
+            Assert.IsFalse(shop.CanBuy(0), "商店关了就没有能买的格子");
+        }
+
+        [Test]
         public void BuyingWithoutEnoughCoinsChangesNothing()
         {
             ShopController shop = Build(out PlayerModel player, out RunState run, out _, coins: 10);

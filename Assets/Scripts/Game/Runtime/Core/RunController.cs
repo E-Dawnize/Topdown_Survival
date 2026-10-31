@@ -29,8 +29,8 @@ namespace Game.Core
     /// ShopClosed / RunEnded），不直接改视图与 UI 状态：HUD、商店、结算面板以后都靠订阅，
     /// 单测也就能只凭"收到的顺序"验状态机，不必去读一堆中间字段。
     ///
-    /// 商店与结束态里 Tick 不做任何推进。继续下一波只有一个入口 CloseShop：现在还没有商店 UI，
-    /// 测试与 DebugOverlay 调的是同一个方法，UI 接进来时不用改这里。
+    /// 商店与结束态里 Tick 不做任何推进。继续下一波只有一个入口 CloseShop：
+    /// 商店界面的 Esc 与测试调的是同一个方法。
     /// </summary>
     public sealed class RunController
     {

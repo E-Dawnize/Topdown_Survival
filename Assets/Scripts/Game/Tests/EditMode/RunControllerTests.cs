@@ -83,7 +83,7 @@ namespace Game.Tests
             run.StartRun();
             bus.Flush();
 
-            // 三波一路打过去，每间商店都从外面关掉（相当于没有 UI 时按 F4）
+            // 三波一路打过去，每间商店都从外面关掉（相当于在商店面板上按 Esc）
             for (int wave = 1; wave <= 3; wave++)
             {
                 Advance(run, bus, 0.6f);

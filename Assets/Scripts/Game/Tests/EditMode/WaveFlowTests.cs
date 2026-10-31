@@ -22,7 +22,7 @@ namespace Game.Tests
     /// 玩家生命调到很大：默认 100 血在四十个爬虫面前撑不过十秒，"跑满三波"就无从谈起。
     /// 中途死亡的流程另有一条用例（PlayerDiesMidWave...）。
     ///
-    /// 没有商店 UI，所以一进商店就从外面调 CloseShop —— 商店 UI 以后调的是同一个入口。
+    /// 这里不建商户界面，一进商店就从外面调 CloseShop —— 商店的 Esc 调的是同一个入口。
     /// </summary>
     public class WaveFlowTests
     {
@@ -63,7 +63,7 @@ namespace Game.Tests
                                 " 波的上限 " + wave.ConcurrentCap);
                 }
 
-                // 没有商店 UI：进商店就关掉，相当于按 F4 跳过
+                // 本用例不建商店界面：进商店就关掉，相当于在面板上按 Esc
                 if (run.Phase == RunPhase.Shop) run.CloseShop();
             }
 

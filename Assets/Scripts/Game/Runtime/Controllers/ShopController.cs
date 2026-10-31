@@ -223,22 +223,34 @@ namespace Game.Controllers
         }
 
         /// <summary>
-        /// 买第 index 格。买入后这一格清空（Item 变 null），同一格不可重复购买。
-        /// 属性走 StatBlock.Add，Source 是这一次购买的 OwnedItem 实例；同名道具受 MaxStack 限制。
+        /// 这一格现在能不能买：开着一间商店、格子有货、金币够、同名没叠满。
+        /// TryBuy 与商店界面共用这一条判据——界面拿它决定"置灰 / 方向键跳过"，
+        /// 两处各写一遍的话，改了规则以后会出现"看着能买、按下去没反应"。
         /// </summary>
-        public bool TryBuy(int index)
+        public bool CanBuy(int index)
         {
             if (!_opened) return false;
             if (index < 0 || index >= _slots.Length) return false;
 
             ItemDef def = _slots[index].Item;
             if (def == null) return false;
-
-            int price = _slots[index].Price;
+            if (_slots[index].Price > _run.Coins) return false;
 
             // MaxStack <= 0 的配置当 1 处理：不许叠的写成 0 是笔误，不该变成"无限叠"
             int maxStack = def.MaxStack > 0 ? def.MaxStack : 1;
-            if (StackOf(def.Id) >= maxStack) return false;
+            return StackOf(def.Id) < maxStack;
+        }
+
+        /// <summary>
+        /// 买第 index 格。买入后这一格清空（Item 变 null），同一格不可重复购买。
+        /// 属性走 StatBlock.Add，Source 是这一次购买的 OwnedItem 实例；同名道具受 MaxStack 限制。
+        /// </summary>
+        public bool TryBuy(int index)
+        {
+            if (!CanBuy(index)) return false;
+
+            ItemDef def = _slots[index].Item;
+            int price = _slots[index].Price;
 
             // 先判钱再改任何状态：金币不够时属性、叠层、格子都不能动
             if (!_run.TrySpend(price)) return false;
