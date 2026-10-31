@@ -171,11 +171,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _camera: {fileID: 1293736780}
-  _orthoSize: 7
-  _tiltDegrees: 50
-  _groundHalfExtent: 20
-  _distance: 30
-  _damping: 0.35
+  _preset: {fileID: 11400000, guid: 734abc6b3a42de310d0a9c571cbf64c0, type: 2}
 --- !u!114 &330126994
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -607,7 +603,7 @@ MonoBehaviour:
   m_ShowCameraFrustum: 1
   m_IgnoreTimeScale: 0
   m_WorldUpOverride: {fileID: 0}
-  m_UpdateMethod: 2
+  m_UpdateMethod: 1
   m_BlendUpdateMethod: 1
   m_DefaultBlend:
     m_Style: 1

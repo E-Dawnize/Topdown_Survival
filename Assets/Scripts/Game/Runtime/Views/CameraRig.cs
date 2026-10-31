@@ -5,20 +5,15 @@ namespace Game.Views
 {
     /// <summary>
     /// 相机装配与边界限制。运行时建 CameraTarget 与虚拟相机，
-    /// 场景里只留主相机和 CinemachineBrain。
+    /// 场景里只留主相机和 CinemachineBrain。取景、跟随与边界参数来自 CameraPreset。
     /// 边界不用 CinemachineConfiner3D：正交相机的 bounding volume 贴合是按透视推的，会穿帮。
     /// </summary>
     public sealed class CameraRig : MonoBehaviour
     {
         [SerializeField] Camera _camera;
-        [SerializeField] float _orthoSize = 7f;
-        [SerializeField] float _tiltDegrees = 50f;
-        [SerializeField] float _groundHalfExtent = 80f;
-        [SerializeField] float _distance = 30f;
-        [SerializeField] float _damping = 0.35f;
+        [SerializeField] CameraPreset _preset;
 
         Transform _target;
-        CinemachineVirtualCamera _vcam;
 
         void Awake()
         {
@@ -26,21 +21,32 @@ namespace Game.Views
             Core.AppRoot.Instance?.BindCameraRig(this);
         }
 
+        /// <summary>
+        /// 只负责把目标点夹进边界；跟随的平滑由 transposer 的阻尼做。
+        /// 夹紧发生在目标上，平滑后的相机不会跑到场地外。
+        /// </summary>
         public void Tick(Vector2 focus)
         {
             if (_target == null) return;
+
             Vector2 clamped = Clamp(focus);
             _target.position = new Vector3(clamped.x, 0f, clamped.y);
         }
 
-        public Vector2 Clamp(Vector2 point)
+        /// <summary>
+        /// 边界是游戏规则，不是相机机制：Confiner3D 要一个 3D 包围体、且按相机位姿算，
+        /// Confiner2D 只认 XY 平面正交相机。所以用一根锚点承载夹紧，相机只管跟着锚点走。
+        /// </summary>
+        Vector2 Clamp(Vector2 point)
         {
-            float aspect = _camera != null ? _camera.aspect : 16f / 9f;
-            float halfWidth = _orthoSize * aspect;
-            float halfDepth = _orthoSize / Mathf.Sin(_tiltDegrees * Mathf.Deg2Rad);
+            if (_preset == null) return point;
 
-            float maxX = Mathf.Max(0f, _groundHalfExtent - halfWidth);
-            float maxZ = Mathf.Max(0f, _groundHalfExtent - halfDepth);
+            float aspect = _camera != null ? _camera.aspect : 16f / 9f;
+            float halfWidth = _preset.OrthographicSize * aspect;
+            float halfDepth = _preset.OrthographicSize / Mathf.Sin(_preset.TiltDegrees * Mathf.Deg2Rad);
+
+            float maxX = Mathf.Max(0f, _preset.BoundsHalfExtent - halfWidth);
+            float maxZ = Mathf.Max(0f, _preset.BoundsHalfExtent - halfDepth);
 
             return new Vector2(
                 Mathf.Clamp(point.x, -maxX, maxX),
@@ -60,30 +66,40 @@ namespace Game.Views
                 return;
             }
 
-            float tilt = _tiltDegrees * Mathf.Deg2Rad;
-            var offset = new Vector3(0f, _distance * Mathf.Sin(tilt), -_distance * Mathf.Cos(tilt));
+            if (_preset == null)
+            {
+                Debug.LogError("[CameraRig] 没有指定 CameraPreset，相机不会跟随玩家。" +
+                               "先给 Main Camera 指定一份 Assets/Presets 下的预设");
+                return;
+            }
+
+            float tilt = _preset.TiltDegrees * Mathf.Deg2Rad;
+            var offset = new Vector3(
+                0f,
+                _preset.Distance * Mathf.Sin(tilt),
+                -_preset.Distance * Mathf.Cos(tilt));
 
             var targetGo = new GameObject("CameraTarget");
             _target = targetGo.transform;
 
             var vcamGo = new GameObject("vcam_Follow");
-            vcamGo.transform.position = offset;
-            vcamGo.transform.rotation = Quaternion.Euler(_tiltDegrees, 0f, 0f);
+            var vcam = vcamGo.AddComponent<CinemachineVirtualCamera>();
+            vcam.Follow = _target;
+            vcam.m_Lens.Orthographic = true;
+            vcam.m_Lens.OrthographicSize = _preset.OrthographicSize;
+            vcam.m_Lens.NearClipPlane = _preset.NearClip;
+            vcam.m_Lens.FarClipPlane = _preset.FarClip;
 
-            _vcam = vcamGo.AddComponent<CinemachineVirtualCamera>();
-            _vcam.Priority = 10;
-            _vcam.Follow = _target;
-            _vcam.m_Lens.Orthographic = true;
-            _vcam.m_Lens.OrthographicSize = _orthoSize;
-            _vcam.m_Lens.NearClipPlane = 0.3f;
-            _vcam.m_Lens.FarClipPlane = 300f;
-
-            CinemachineTransposer transposer = _vcam.AddCinemachineComponent<CinemachineTransposer>();
+            var transposer = vcam.AddCinemachineComponent<CinemachineTransposer>();
             transposer.m_BindingMode = CinemachineTransposer.BindingMode.LockToTargetNoRoll;
             transposer.m_FollowOffset = offset;
-            transposer.m_XDamping = _damping;
+            transposer.m_XDamping = _preset.Damping;
             transposer.m_YDamping = 0f;
-            transposer.m_ZDamping = _damping;
+            transposer.m_ZDamping = _preset.Damping;
+
+            // Brain 接管前的那一帧也用预设里的取景，避免和场景里的旧值不一致
+            _camera.orthographic = true;
+            _camera.orthographicSize = _preset.OrthographicSize;
         }
     }
 }
