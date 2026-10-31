@@ -191,13 +191,22 @@ namespace Game.Controllers
         }
 
         /// <summary>
-        /// 换局时清空：保底计数、商店状态、已买道具计数都归零。
+        /// 换局时清空：保底计数、商店状态、已买道具计数、以及买过的道具在属性上留下的修正。
         /// 由 RunController.StartRun 直接调，而不是订阅 RunStarted：RunStarted 要到下一次 Flush 才分发，
         /// 中间万一有人先开了商店，就会带着上一局攒的保底进场。
+        ///
+        /// 属性回滚必须做：OwnedItem 实例同时是 StatBlock 修正的 Source，只清列表不退修正，
+        /// 在同一个进程里重开一局就会得到"金币归零、属性却还是上一局叠加后的"——
+        /// 这正是 I2-10 的"重开一局状态干净"要卡住的东西。
         /// </summary>
         public void ResetForNewRun()
         {
+            for (int i = 0; i < _owned.Count; i++) _player.Stats.RemoveBySource(_owned[i]);
+
             _pity = 0;
+            _spent = 0;
+            _refreshUsed = false;
+            _waveIndex = 1;
             _owned.Clear();
             _stacks.Clear();
             Close();

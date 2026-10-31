@@ -84,6 +84,25 @@ namespace Game.Core
         /// <summary>当前波次号，从 1 开始。与 Run.WaveIndex 是同一份数据，这里是给流程内的系统用的入口。</summary>
         public int WaveIndex => _run.WaveIndex;
 
+        /// <summary>本局击杀数。HUD 与结算面板都读它，不要在视图里再数一遍 UnitDied。</summary>
+        public int Kills => _kills;
+
+        /// <summary>
+        /// 当前这一波还剩几秒。取整与钳位都放在这里：HUD 只负责显示，不自己算"哪一波的时长减哪个计时"。
+        /// 商店与结束态返回 0——波次计时在那些态里不推进，显示成"还剩 30 秒"会让人以为还在打。
+        /// </summary>
+        public float WaveSecondsLeft
+        {
+            get
+            {
+                WaveDef wave = CurrentWave;
+                if (Phase != RunPhase.Battle || wave == null) return 0f;
+
+                float left = wave.Duration - _waveElapsed;
+                return left > 0f ? left : 0f;
+            }
+        }
+
         /// <summary>Run.WaveIndex 指向的那一波。索引越界时返回 null（不会拿越界的下标去取）。</summary>
         public WaveDef CurrentWave
         {
@@ -96,8 +115,12 @@ namespace Game.Core
 
         /// <summary>
         /// 开局。Idle 与 GameOver 可用；一局正在跑（Battle / Shop）时忽略，
-        /// 免得外部误调把 WaveIndex 与计时往回拨。重开一局的实体清理归 I2-10，
-        /// 这里只重置流程状态（波次、计时、击杀数）。
+        /// 免得外部误调把 WaveIndex 与计时往回拨。
+        ///
+        /// 这里只重置流程状态（波次、计时、击杀数、金币），实体不归它管：玩家、敌人、掉落物、视图池
+        /// 全部挂在场景上，重开一局走的是场景重载（见 ResultView），由场景把上一局的东西一起带走。
+        /// 反过来说，同一次运行里调 StartRun 只会把状态机拨回第一波，被清空的 PlayerModel（HP = 0）
+        /// 不会复活——所以正式路径永远是重载场景，这个方法留给测试与调试。
         /// </summary>
         public void StartRun()
         {
@@ -107,6 +130,9 @@ namespace Game.Core
             _waveElapsed = 0f;
             _kills = 0;
             _wavesCleared = 0;
+
+            // 金币与波次索引是跨局状态：重开一局要从 0 金币、第 1 波开始
+            _run.ResetForNewRun();
 
             // 上一局攒的保底计数不能带到新的一局：连空 8 次是这一局的运气，不是下一局的起点
             _shop?.ResetForNewRun();

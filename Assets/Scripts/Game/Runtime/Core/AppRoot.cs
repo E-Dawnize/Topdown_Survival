@@ -60,6 +60,7 @@ namespace Game.Core
         public PlayerView PlayerView { get; private set; }
         public HudView Hud { get; private set; }
         public ShopView ShopUi { get; private set; }
+        public ResultView ResultUi { get; private set; }
         public CameraRig Camera { get; private set; }
 
         public EnemySystem Enemies { get; private set; }
@@ -111,6 +112,7 @@ namespace Game.Core
             CreateCombat();
             CreateHud();
             CreateShopUi();
+            CreateResultUi();
 
             // 两个场景同一个入口：一进来就开局，波次系统自己刷怪。
             // RunStarted / WaveStarted(1) 只是被投进队列，第一次 Flush（RunSimulation.Tick 末尾）才分发，
@@ -118,6 +120,14 @@ namespace Game.Core
             if (RunController != null) RunController.StartRun();
         }
 
+        /// <summary>
+        /// 场景卸载。重开一局就是一次场景重载（见 ResultView），所以这里必须把跨场景的只有两样东西收干净：
+        ///   - 事件总线：Clear 会把所有订阅与未分发的队列一起丢掉，SubscriptionCount 归零；
+        ///   - Instance：不置空的话新场景的装配根会把自己当成重复的那个，直接自毁。
+        /// 实体（玩家、敌人、掉落物、视图池、HUD/商店/结算面板）都挂在本对象或场景里，跟着场景一起销毁，
+        /// 不需要手动逐个清：手动清才是这个迭代里最容易漏项的一块。
+        /// 本对象自己的订阅（RunController 的 UnitDied）也在这条总线上，一样被 Clear 带走。
+        /// </summary>
         void OnDestroy()
         {
             if (Instance != this) return;
@@ -353,7 +363,7 @@ namespace Game.Core
             }
 
             view.Initialize(Events);
-            view.Bind(Player, Run);
+            view.Bind(Player, Run, RunController, Enemies);
             instance.SetActive(true);
             Hud = view;
         }
@@ -377,6 +387,25 @@ namespace Game.Core
             view.Bind(Shop, Run, RunController, Input);
             go.SetActive(true);
             ShopUi = view;
+        }
+
+        /// <summary>
+        /// 结算面板（I2-10）。与商店界面同一套做法：带 RectTransform 建根、先注入再激活（它订阅 RunEnded），
+        /// 面板本身由代码搭（见 ResultView），不占 UnitPrefabMap 的一条映射。
+        /// 重开与回主菜单都走场景切换，所以这里把 UnitySceneFlow 注进去——面板不直接调 SceneManager，
+        /// 换实现（比如加一段淡出）时只改这一处。
+        /// </summary>
+        void CreateResultUi()
+        {
+            var go = new GameObject("ResultCanvas", typeof(RectTransform));
+            go.transform.SetParent(transform, false);
+            go.SetActive(false);
+
+            var view = go.AddComponent<ResultView>();
+            view.Initialize(Events);
+            view.Bind(RunController, Input, new UnitySceneFlow());
+            go.SetActive(true);
+            ResultUi = view;
         }
 
         public void BindPlayerView(PlayerView view)

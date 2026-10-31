@@ -13,6 +13,17 @@ namespace Game.Model
         /// <summary>配置里的总波数。未绑定配置前是 0。</summary>
         public int WavesTotal { get; set; }
 
+        /// <summary>
+        /// 换局归零：金币与波次索引。WavesTotal 不动——它是配置的事实（这一局有几波），不是一局的进度。
+        /// 由 RunController.StartRun 调：重开一局时金币必须从 0 开始，不能让上一局买剩下的钱进新的一局，
+        /// 否则"重开三次状态正确"里第一次重开就带着上一局的经济。
+        /// </summary>
+        public void ResetForNewRun()
+        {
+            Coins = 0;
+            WaveIndex = 1;
+        }
+
         public void AddCoins(int amount)
         {
             if (amount == 0) return;
