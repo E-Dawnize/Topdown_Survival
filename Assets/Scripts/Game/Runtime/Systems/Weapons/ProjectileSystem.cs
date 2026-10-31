@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Game.Core.Events;
 using Game.Model;
 using UnityEngine;
 
@@ -29,6 +30,7 @@ namespace Game.Systems.Weapons
         struct Slot
         {
             public Vector2 Position;
+            public Vector2 PrevPosition;
             public Vector2 Velocity;
             public DamageInfo Damage;
             public int RemainingHits;
@@ -40,13 +42,22 @@ namespace Game.Systems.Weapons
         /// <summary>对外只读快照。视图层拿它渲染，测试拿它验弹道方向。</summary>
         public readonly struct Snapshot
         {
+            /// <summary>池内槽位号。它在一个投射物的生命周期里不变，视图层按它对齐 GameObject。</summary>
+            public readonly int Slot;
+
             public readonly Vector2 Position;
+
+            /// <summary>本步移动前的位置。渲染层用它和 Position 插值，不直接吃阶梯位移。</summary>
+            public readonly Vector2 PrevPosition;
+
             public readonly Vector2 Velocity;
             public readonly bool IsCrit;
 
-            public Snapshot(Vector2 position, Vector2 velocity, bool isCrit)
+            public Snapshot(int slot, Vector2 position, Vector2 prevPosition, Vector2 velocity, bool isCrit)
             {
+                Slot = slot;
                 Position = position;
+                PrevPosition = prevPosition;
                 Velocity = velocity;
                 IsCrit = isCrit;
             }
@@ -65,15 +76,19 @@ namespace Game.Systems.Weapons
 
         readonly IRandom01 _rng;
 
+        /// <summary>命中事件往哪发。可空：武器单测不需要事件总线，传 null 就只扣血不发事件。</summary>
+        readonly IEventBus _events;
+
         // 按敌人槽位号索引的"最后一发打中它的戳"。0 表示没被打过，戳从 1 开始发。
         int[] _hitStamp = new int[64];
         int _nextStamp = 1;
 
-        public ProjectileSystem(IRandom01 rng, int capacity = 256)
+        public ProjectileSystem(IRandom01 rng, int capacity = 256, IEventBus events = null)
         {
             if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
 
             _rng = rng ?? throw new ArgumentNullException(nameof(rng));
+            _events = events;
             _slots = new Slot[capacity];
 
             // 倒序压栈，先租出去的是 0 号，池内顺序与分配顺序一致，看调试信息时好对上
@@ -100,6 +115,7 @@ namespace Game.Systems.Weapons
 
             ref Slot slot = ref _slots[index];
             slot.Position = position;
+            slot.PrevPosition = position;   // 刚出膛这一帧不插值，否则会从上一个用了这个槽位的弹道飞过来
             slot.Velocity = direction * speed;
             slot.Damage = damage;
             slot.RemainingHits = pierce > 0 ? pierce : 1;
@@ -138,7 +154,8 @@ namespace Game.Systems.Weapons
             }
 
             Slot slot = _slots[_active[ordinal]];
-            snapshot = new Snapshot(slot.Position, slot.Velocity, slot.Damage.IsCrit);
+            snapshot = new Snapshot(_active[ordinal], slot.Position, slot.PrevPosition, slot.Velocity,
+                slot.Damage.IsCrit);
             return true;
         }
 
@@ -146,6 +163,7 @@ namespace Game.Systems.Weapons
         bool Step(ref Slot slot, float dt, EnemySystem enemies)
         {
             Vector2 from = slot.Position;
+            slot.PrevPosition = from;
             Vector2 step = slot.Velocity * dt;
             Vector2 to = from + step;
             float stepLength = step.magnitude;
@@ -210,8 +228,16 @@ namespace Game.Systems.Weapons
                 if (enemy == null || !enemy.IsAlive || enemy.IsDead) continue;
 
                 _hitStamp[enemySlot] = slot.Stamp;
-                WeaponDamage.ApplyToEnemy(enemy, slot.Damage, _rng.Next01());
+                DamageResult result = WeaponDamage.ApplyToEnemy(enemy, slot.Damage, _rng.Next01());
                 slot.RemainingHits--;
+
+                // 只在真扣到血时发：闪避、无敌帧这种"打到了但没扣"不该让受击表现亮一下。
+                // 死亡事件不在这里发：存活标记与清理归外部的清理阶段，发在这里就成了隐式时序。
+                if (result.Applied > 0f)
+                {
+                    _events?.Publish(new UnitDamaged(EnemySystem.UnitIdOf(enemySlot), slot.Damage.Source,
+                        result.Applied, slot.Damage.IsCrit, result.RemainingHp));
+                }
             }
         }
 

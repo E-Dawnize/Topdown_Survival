@@ -42,6 +42,15 @@ namespace Game.Systems
             _arenaHalfExtent = arenaHalfExtent;
         }
 
+        /// <summary>
+        /// 敌人槽位号到 UnitId 的唯一换算。事件与伤害里都走这里，免得各处自己写 slot + 1
+        /// 之后偏移量对不上（0 是 UnitId.None，所以从 1 开始）。
+        /// </summary>
+        public static UnitId UnitIdOf(int slot) => new UnitId(slot + 1);
+
+        /// <summary>UnitIdOf 的反函数。视图层收到 UnitDamaged 时靠它找回槽位。</summary>
+        public static int SlotOf(UnitId id) => id.Value - 1;
+
         /// <summary>外部按主循环第 7 步调 Rebuild(玩家位置, 本系统)：格子快照必须晚于移动。</summary>
         public SpatialGrid Grid => _grid;
 
@@ -120,6 +129,9 @@ namespace Game.Systems
             ComputeSeparation(slot, enemy, out separationVelocity, out separationOffset);
 
             enemy.Velocity = chase + separationVelocity;
+
+            // 移动前记一笔，渲染层拿 PrevPosition 与 Position 插值
+            enemy.PrevPosition = enemy.Position;
 
             // 位置 = 速度积分 + 位置松解。后者必要：几十个敌人围住玩家时推速有上限，
             // 只靠速度分离总残余一点互相插进去（实测最小间距只有身体直径的 6 成），
@@ -204,9 +216,9 @@ namespace Game.Systems
 
         void ApplyContactDamage(int slot, EnemyModel enemy, Vector2 direction)
         {
-            // 玩家还没接 StatBlock（I1-3 的产出还没挂到 PlayerModel 上），护甲/闪避先按 0 传；
-            // 闪避骰子该由调用方用 runRng 掷，系统内部不许自己开随机流，先固定 0（等于必中）。
-            var damage = new DamageInfo(enemy.ContactDamage, DamageType.Physical, new UnitId(slot + 1), direction,
+            // 护甲与闪避仍按 0 传：闪避骰子该由调用方用 runRng 掷，系统内部不许自己开随机流。
+            // 真按 _player.Stats[StatType.Dodge] 传而骰子恒为 0，会变成"只要有闪避属性就必定闪避"。
+            var damage = new DamageInfo(enemy.ContactDamage, DamageType.Physical, UnitIdOf(slot), direction,
                 0f, false, DamageFlags.Dodgeable);
             var target = new DamageTarget(_player.HP, 0f, 0f, _player.IsInvulnerable);
 

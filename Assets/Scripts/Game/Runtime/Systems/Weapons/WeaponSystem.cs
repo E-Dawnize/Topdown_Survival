@@ -25,12 +25,13 @@ namespace Game.Systems.Weapons
         readonly IRandom01 _rng;
         readonly List<WeaponModel> _weapons = new List<WeaponModel>(4);
 
-        public WeaponSystem(EnemySystem enemies, IRandom01 rng, UnitId shooter, int projectileCapacity = 256)
+        public WeaponSystem(EnemySystem enemies, IRandom01 rng, UnitId shooter, int projectileCapacity = 256,
+            IEventBus events = null)
         {
             _enemies = enemies ?? throw new ArgumentNullException(nameof(enemies));
             _rng = rng ?? throw new ArgumentNullException(nameof(rng));
             Shooter = shooter;
-            Projectiles = new ProjectileSystem(rng, projectileCapacity);
+            Projectiles = new ProjectileSystem(rng, projectileCapacity, events);
         }
 
         /// <summary>这把武器打出来的伤害记在谁头上。</summary>

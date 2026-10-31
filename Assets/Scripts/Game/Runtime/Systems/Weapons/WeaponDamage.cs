@@ -82,6 +82,9 @@ namespace Game.Systems.Weapons
 
             DamageResult result = DamageResolver.Resolve(damage, target, dodgeRoll);
             enemy.HP = result.RemainingHp;
+
+            // 击杀归属在伤害结算这一刻才能确定，清理阶段拿不到，所以在这里落一笔
+            if (result.Applied > 0f) enemy.LastDamageSource = damage.Source;
             return result;
         }
     }
