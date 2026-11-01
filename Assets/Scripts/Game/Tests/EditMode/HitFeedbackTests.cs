@@ -36,7 +36,7 @@ namespace Game.Tests
             {
                 if (clock.IsHitStopped) stoppedFrames++;
 
-                int advanced = clock.Advance(RunClock.FixedStep);
+                int advanced = AdvanceOneFrame(clock);
                 steps += advanced;
 
                 Assert.LessOrEqual(advanced, 1,
@@ -52,15 +52,48 @@ namespace Game.Tests
         public void AlphaStaysOnLastStepWhileHitStopped()
         {
             var clock = new RunClock();
-            clock.Advance(RunClock.FixedStep);          // 先正常走一步，和“一开局就定格”区分开
+            AdvanceOneFrame(clock);                     // 先正常走一步，和“一开局就定格”区分开
             float before = clock.Alpha;
 
             clock.RequestHitStop(HitFeedback.HitStopSeconds);
-            clock.Advance(RunClock.FixedStep);
+            AdvanceOneFrame(clock);
 
             Assert.AreEqual(1f, clock.Alpha, 1e-6f,
                 "定格时画面要停在最后一步的模拟结果上（alpha 1），按余量算会退回上一步");
             Assert.Less(before, 1f);
+        }
+
+        [Test]
+        public void HitStopAfterSomeStepsKeepsTheUnspentAccumulator()
+        {
+            var clock = new RunClock();
+
+            // 一帧给三步额度；执行第一步后触发定格，剩余两步不能因为 Advance 已扣时间而消失。
+            int available = clock.BeginFrame(RunClock.FixedStep * 3f);
+            Assert.AreEqual(3, available);
+            Assert.IsTrue(clock.TryConsumeStep());
+
+            clock.RequestHitStop(HitFeedback.HitStopSeconds);
+            Assert.IsFalse(clock.TryConsumeStep(), "定格后本帧剩余步不再执行");
+
+            // 让定格时间走完；累加器里仍然应该留着两步。
+            clock.BeginFrame(HitFeedback.HitStopSeconds + RunClock.FixedStep);
+            Assert.IsFalse(clock.IsHitStopped);
+            Assert.IsTrue(clock.TryConsumeStep());
+            Assert.IsTrue(clock.TryConsumeStep());
+            Assert.IsFalse(clock.TryConsumeStep(), "只应剩两步，不能凭空多出第三步");
+        }
+
+        static int AdvanceOneFrame(RunClock clock)
+        {
+            int available = clock.BeginFrame(RunClock.FixedStep);
+            int steps = 0;
+            for (int i = 0; i < available; i++)
+            {
+                if (clock.TryConsumeStep()) steps++;
+            }
+
+            return steps;
         }
 
         [Test]

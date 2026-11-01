@@ -206,5 +206,26 @@ namespace Game.Tests
             }
             Assert.AreEqual(n, bus.SubscriptionCount);
         }
+
+        [Test]
+        public void SameTypeSelfPublishStopsAtTheFlushBudget()
+        {
+            // 处理 Ping 时再 Publish Ping：旧实现会在 EventChannel 的 while 里无限消费，
+            // 外层 guard 根本没机会增长。现在每轮只处理本轮快照，预算用尽必须抛异常而不是挂死。
+            var bus = new EventBus(maxFlushSteps: 8);
+            int handled = 0;
+            Action<Ping> handler = null;
+            handler = _ =>
+            {
+                handled++;
+                bus.Publish(new Ping(handled));
+            };
+
+            bus.Subscribe(handler);
+            bus.Publish(new Ping(0));
+
+            Assert.Throws<InvalidOperationException>(() => bus.Flush());
+            Assert.Less(handled, 1000, "预算应限制自触发链，不能跑到无穷");
+        }
     }
 }

@@ -58,8 +58,8 @@ namespace Game.Tests
                 Speed = 0f,
                 AttackRange = 1f,
                 AttackInterval = 1f,
-                CoinDrop = 0,
-                BodyRadius = BodyRadius
+                XpValue = 0,
+                BodyRadius = BodyRadius, Scale = 1f
             };
         }
 

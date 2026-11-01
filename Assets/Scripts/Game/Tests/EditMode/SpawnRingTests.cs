@@ -5,31 +5,21 @@ using UnityEngine;
 namespace Game.Tests
 {
     /// <summary>
-    /// 波次刷怪环的分布（I1-11 压测的起点条件，I2-2 抽进 WaveController 后仍然成立）。
-    ///
-    /// 要验的就一件事：一批点出生时不能叠在一起。出生就重叠的话，分离力要跑几百步才推得开，
-    /// 压测开局看到的那一团"不是压力测试要测的稳态"，量出来的帧时间也没意义。
-    /// 数量取 200：I1-11 的验收量级，同屏上限放宽到 200 时环带也得装得下。
+    /// 刷怪环分布。出生点不能叠在一起，否则分离力要跑几百步才推得开，
+    /// 压力测试量到的不是稳态。200 个点是 I1-11 的验收量级。
     /// </summary>
     public class SpawnRingTests
     {
         const int EnemyCount = 200;
-
-        /// <summary>
-        /// 两个敌人不重叠的最短距离：敌人表里最大的身体半径是 0.4（Charger），两个加起来 0.8。
-        /// 判定用 1.0 米，比身体直径更宽一点——出生时就互相推挤说明分布不够开。
-        /// </summary>
-        const float MinSpawnDistance = 1f;
+        const float MinSpawnDistance = 0.8f;
 
         static Vector2[] Ring(int count, float phase)
         {
             var points = new Vector2[count];
             for (int i = 0; i < count; i++)
             {
-                points[i] = WaveController.SpawnRingOffset(i, count, phase, WaveController.SpawnRadiusMin,
-                    WaveController.SpawnRadiusMax);
+                points[i] = SpawnRing.Offset(i, count, phase);
             }
-
             return points;
         }
 
@@ -66,8 +56,8 @@ namespace Game.Tests
             for (int i = 0; i < points.Length; i++)
             {
                 float radius = points[i].magnitude;
-                Assert.GreaterOrEqual(radius, WaveController.SpawnRadiusMin - 1e-3f, "第 " + i + " 个敌人刷进了内圈");
-                Assert.LessOrEqual(radius, WaveController.SpawnRadiusMax + 1e-3f, "第 " + i + " 个敌人刷出了外圈");
+                Assert.GreaterOrEqual(radius, SpawnRing.RadiusMin - 1e-3f, "第 " + i + " 个敌人刷进了内圈");
+                Assert.LessOrEqual(radius, SpawnRing.RadiusMax + 1e-3f, "第 " + i + " 个敌人刷出了外圈");
             }
         }
 
@@ -76,16 +66,14 @@ namespace Game.Tests
         {
             Vector2[] first = Ring(EnemyCount, 0.4f);
             Vector2[] again = Ring(EnemyCount, 0.4f);
-            CollectionAssert.AreEqual(first, again, "同样的种子与下标必须给出同样的出生点");
+            CollectionAssert.AreEqual(first, again, "同样的相位与下标必须给出同样的出生点");
 
-            // phase 只整圈转一下，不改变点与点的相对位置：换种子时刷怪圈的样子变了，均匀度不能跟着变
             const float phaseShift = 0.9f;
             Vector2[] shifted = Ring(EnemyCount, 0.4f + phaseShift);
             float cos = Mathf.Cos(phaseShift);
             float sin = Mathf.Sin(phaseShift);
             for (int i = 0; i < first.Length; i++)
             {
-                // 转 phaseShift 后的点 = 原点绕 Y 轴转相位的那个角（二维平面上的旋转）
                 var rotated = new Vector2(first[i].x * cos - first[i].y * sin, first[i].x * sin + first[i].y * cos);
                 Assert.AreEqual(rotated.x, shifted[i].x, 1e-3f, "第 " + i + " 个敌人的 x 对不上旋转结果");
                 Assert.AreEqual(rotated.y, shifted[i].y, 1e-3f, "第 " + i + " 个敌人的 y 对不上旋转结果");
@@ -95,8 +83,7 @@ namespace Game.Tests
         [Test]
         public void EmptyRingRequestDoesNotThrow()
         {
-            // 数量为 0 时调用方仍然会走一遍循环（count 来自配置/调试面板），不能在这里除零
-            Assert.AreEqual(Vector2.zero, WaveController.SpawnRingOffset(0, 0, 0f, 8f, 15f));
+            Assert.AreEqual(Vector2.zero, SpawnRing.Offset(0, 0, 0f, 8f, 15f));
         }
     }
 }

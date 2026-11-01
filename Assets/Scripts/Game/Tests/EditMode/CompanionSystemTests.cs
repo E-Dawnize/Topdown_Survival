@@ -94,7 +94,7 @@ namespace Game.Tests
             {
                 Id = "dummy", Name = "测试靶", Behaviour = EnemyBehaviourType.Chase,
                 HP = hp, Damage = 0f, Speed = speed, AttackRange = 1f, AttackInterval = 1f,
-                CoinDrop = 0, BodyRadius = bodyRadius
+                XpValue = 0, BodyRadius = bodyRadius, Scale = 1f
             };
         }
 
@@ -173,6 +173,12 @@ namespace Game.Tests
             Assert.Less(maxDistanceToPlayer, CompanionSystem.TeleportDistance,
                 "旅伴移速比玩家快，全速跑时不该触发 4 米瞬移（掉队）");
 
+            // 阻尼跟随不会在玩家停下的同一个 tick 就归位：再跑 2 秒让它回到环上
+            for (int step = 0; step < 120; step++)
+            {
+                companions.TickMovement(player.Position, Dt);
+            }
+
             // 停下之后各自归位：离玩家等于自己的 FollowRadius
             for (int i = 0; i < companions.SlotCapacity; i++)
             {
@@ -183,6 +189,78 @@ namespace Game.Tests
                 Assert.AreEqual(companion.Def.FollowRadius, distance, 0.05f,
                     "旅伴 " + companion.Def.Id + " 没有停在环绕位上");
             }
+        }
+
+        [Test]
+        public void AggroCompanionMovesTowardNearestEnemy()
+        {
+            PlayerModel player = Player();
+            CompanionSystem companions = Build(player, out EnemySystem enemies);
+            CompanionDef def = CompanionDefOf("Aggro", CompanionFaction.Beast, 1.4f, "Sword");
+            def.AI = CompanionAI.Aggro;
+            def.AggroRadius = 8f;
+            def.PreferredRange = 1.5f;
+            def.LeashDistance = 8f;
+            CompanionModel companion = companions.Recruit(def);
+
+            EnemyModel enemy = SpawnDummy(enemies, new Vector2(5f, 0f), 100f);
+            enemies.Grid.Rebuild(Vector2.zero, enemies);
+
+            float before = (companion.Position - enemy.Position).magnitude;
+            companions.TickMovement(Vector2.zero, Dt);
+            float after = (companion.Position - enemy.Position).magnitude;
+
+            Assert.Less(after, before, "Aggro 旅伴应当主动靠近敌人，而不是停在环绕位");
+        }
+
+        [Test]
+        public void KiterCompanionBacksAwayFromCloseEnemy()
+        {
+            PlayerModel player = Player();
+            CompanionSystem companions = Build(player, out EnemySystem enemies);
+            CompanionDef def = CompanionDefOf("Kiter", CompanionFaction.Machine, 1.6f, "Bow");
+            def.AI = CompanionAI.Kiter;
+            def.AggroRadius = 8f;
+            def.PreferredRange = 5f;
+            def.LeashDistance = 8f;
+            CompanionModel companion = companions.Recruit(def);
+
+            EnemyModel enemy = SpawnDummy(enemies, new Vector2(2f, 0f), 100f);
+            enemies.Grid.Rebuild(Vector2.zero, enemies);
+
+            float before = (companion.Position - enemy.Position).magnitude;
+            companions.TickMovement(Vector2.zero, Dt);
+            float after = (companion.Position - enemy.Position).magnitude;
+
+            Assert.Greater(after, before, "Kiter 敌人贴脸时应当后退，而不是迎上去");
+        }
+
+        [Test]
+        public void AiCompanionReturnsToPlayerWhenBeyondLeash()
+        {
+            PlayerModel player = Player();
+            CompanionSystem companions = Build(player, out EnemySystem enemies);
+            CompanionDef def = CompanionDefOf("Aggro", CompanionFaction.Beast, 1.4f, "Sword");
+            def.AI = CompanionAI.Aggro;
+            def.AggroRadius = 20f;
+            def.PreferredRange = 1.5f;
+            def.LeashDistance = 4f;
+            CompanionModel companion = companions.Recruit(def);
+
+            // 把旅伴放到离玩家 9 米的地方：超过 leach(4)+2，下一步必须瞬移回环绕位
+            companion.Position = new Vector2(9f, 0f);
+            companion.PrevPosition = companion.Position;
+
+            companions.TickMovement(Vector2.zero, Dt);
+
+            Assert.LessOrEqual((companion.Position - Vector2.zero).magnitude, 2f,
+                "超过活动半径要回位，否则会追怪追出屏幕");
+        }
+
+        static EnemyModel SpawnDummy(EnemySystem enemies, Vector2 position, float hp)
+        {
+            int slot = enemies.Spawn(DummyDef(hp), position);
+            return enemies.Get(slot);
         }
 
         [Test]
@@ -216,14 +294,36 @@ namespace Game.Tests
             companions.TickMovement(player.Position, Dt);
             Vector2 start = companion.Position;
 
-            // 玩家走到 3.9 米：还没到瞬移阈值，这一步只能按移速走 6 × dt = 0.1 米
+            // 玩家走到 3.9 米：还没到瞬移阈值，这一步只能按移速上限追，而且有阻尼
             player.Position = new Vector2(3.9f, 0f);
             Assert.Less((player.Position - start).magnitude, CompanionSystem.TeleportDistance);
             companions.TickMovement(player.Position, Dt);
 
             float moved = (companion.Position - start).magnitude;
-            Assert.AreEqual(companion.MoveSpeed * Dt, moved, 1e-3f,
-                "没超过 4 米就按移速直线追，位置变化量应当正好是一步的位移");
+            Assert.Greater(moved, 0f, "没超过 4 米要正常走，不能原地不动");
+            Assert.Less(moved, companion.MoveSpeed * Dt + 1e-3f,
+                "Follow 从静止起步应当有阻尼，不能一步就顶到 6 米/秒");
+            Assert.Less(moved, CompanionSystem.TeleportDistance,
+                "没超过 4 米不能瞬移");
+        }
+
+        [Test]
+        public void FollowCompanionTrailsPlayerVelocity()
+        {
+            PlayerModel player = Player();
+            CompanionSystem companions = Build(player, out _);
+            CompanionModel companion = companions.Recruit(CompanionDefOf("IronBox", CompanionFaction.Machine, 1.6f));
+
+            // 先把环绕位走稳，记下静止时的 x
+            for (int step = 0; step < 120; step++) companions.TickMovement(player.Position, Dt);
+            float restingX = companion.Position.x;
+
+            // 玩家朝 +x 跑，但位置暂时不动：Follow 的目标点应当按速度往 -x 偏，整队拖在身后
+            player.Velocity = new Vector2(player.MoveSpeed, 0f);
+            for (int step = 0; step < 120; step++) companions.TickMovement(player.Position, Dt);
+
+            Assert.Less(companion.Position.x, restingX - 0.2f,
+                "Follow 旅伴应当按玩家速度拖在身后，而不是和玩家保持同一个相对位置");
         }
 
         // ---- 武器绑定与击杀归属 ----
@@ -260,12 +360,13 @@ namespace Game.Tests
 
             Assert.AreEqual(companion.UnitId, enemy.LastDamageSource,
                 "击杀归属要记在旅伴头上：敌人死亡时清理阶段读的就是 LastDamageSource");
-            Assert.AreEqual(CompanionSystem.UnitIdBase + companion.Slot + 1, companion.UnitId.Value);
+            Assert.AreEqual(UnitKind.Companion, companion.UnitId.Kind, "旅伴 ID 要带种类，不能靠数值区间猜");
             Assert.AreNotEqual(1, companion.UnitId.Value, "旅伴的 UnitId 不能等于玩家（AppRoot.PlayerUnit = 1）");
 
             Assert.AreEqual(1, damaged.Count, "两发箭里第一发就够杀死 5 血的敌人，只有一次命中");
             Assert.AreEqual(companion.UnitId, damaged[0].Source, "受击事件的来源也必须是旅伴，不能算成玩家");
-            Assert.AreEqual(companion.UnitId, CompanionSystem.UnitIdOf(CompanionSystem.SlotOf(companion.UnitId)));
+            Assert.AreEqual(companion.UnitId, companions.UnitIdOf(companion.Slot));
+            Assert.AreEqual(companion.Slot, companions.SlotOf(companion.UnitId));
         }
 
         // ---- 重复购买升级 ----
@@ -366,6 +467,57 @@ namespace Game.Tests
             Assert.IsFalse(companions.CanRecruit(defs[CompanionSystem.MaxCompanions]), "第 5 个不同旅伴招不了");
             Assert.IsNull(companions.Recruit(defs[CompanionSystem.MaxCompanions]));
             Assert.AreEqual(CompanionSystem.MaxCompanions, companions.Count);
+        }
+
+        // ---- 武器规则注入与槽位复用 ----
+
+        [Test]
+        public void CompanionUpgradesNeverGrowTheWeaponAndTheInjectedRulesAreIgnored()
+        {
+            PlayerModel player = Player();
+            var bus = new EventBus();
+            var enemies = new EnemySystem(player, ArenaHalf);
+
+            // 故意传一份“激进”的武器规则：旅伴本阶段没有武器成长，这份规则不应该产生任何效果
+            var rules = new WeaponUpgradeRules(9, 0.5f, 0.5f, 2, 2);
+            var companions = new CompanionSystem(player, enemies, WeaponTable(), new DeterministicRandom(Seed), bus,
+                null, rules);
+
+            CompanionDef def = CompanionDefOf("IronBox", CompanionFaction.Machine, 1.6f);
+            CompanionModel companion = companions.Recruit(def);
+            WeaponModel weapon = companions.WeaponsOf(companion.Slot).Weapons[0];
+
+            companions.Recruit(def);
+            companions.Recruit(def);   // 旅伴升到 3 级
+
+            Assert.AreEqual(3, companion.Level, "旅伴升级照旧走 CompanionModel");
+            Assert.AreEqual(1, weapon.Level, "旅伴升级不动武器等级：本阶段没有旅伴武器成长");
+            Assert.AreEqual(BowDamage, weapon.BaseDamage, 1e-4f, "武器伤害仍是表里的基础值");
+            Assert.AreEqual(BowCooldown, weapon.Cooldown, 1e-4f, "开火间隔仍是 1 级武器的值");
+            Assert.AreSame(WeaponUpgradeRules.Default, weapon.Rules,
+                "注入的 weaponRules 被显式忽略，不会因为规则不同而改变旅伴武器");
+        }
+
+        [Test]
+        public void RemovingACompanionUnbindsItsWeaponsAndTheNextRecruitGetsANewSystem()
+        {
+            PlayerModel player = Player();
+            CompanionSystem companions = Build(player, out _);
+
+            CompanionModel first = companions.Recruit(CompanionDefOf("IronBox", CompanionFaction.Machine, 1.6f));
+            int slot = first.Slot;
+            WeaponSystem firstWeapons = companions.WeaponsOf(slot);
+            Assert.IsNotNull(firstWeapons);
+
+            Assert.IsTrue(companions.Remove(slot));
+            Assert.IsNull(companions.Get(slot), "离队后槽位为空");
+            Assert.IsNull(companions.WeaponsOf(slot), "离队后不能还留着上一套武器系统");
+            Assert.IsFalse(companions.Remove(slot), "重复移除是空操作");
+
+            CompanionModel second = companions.Recruit(CompanionDefOf("Whisper", CompanionFaction.Ghost, 1.6f));
+            Assert.AreEqual(slot, second.Slot, "空槽位按槽位号从小到大复用");
+            Assert.AreNotSame(firstWeapons, companions.WeaponsOf(slot), "复用槽位要换一套新的武器系统");
+            Assert.AreEqual(second.UnitId, companions.WeaponsOf(slot).Shooter, "新武器系统的射手是新旅伴");
         }
 
         // ---- 稳态不分配 ----

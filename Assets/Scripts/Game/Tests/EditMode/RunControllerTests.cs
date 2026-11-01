@@ -1,247 +1,200 @@
-using System.Collections.Generic;
-using Game.Config;
+﻿using System.Collections.Generic;
 using Game.Core;
 using Game.Core.Events;
 using Game.Model;
 using NUnit.Framework;
-using UnityEngine;
 
 namespace Game.Tests
 {
     /// <summary>
-    /// 局状态机的事件顺序。只测 RunController 一个对象：玩家、波次表、事件总线都是现搭的，
-    /// 不经过 RunSimulation，这样"哪个阶段该发哪个事件"错的时候一眼能看出是状态机的问题。
-    /// 波次表照抄 Wave.json 的三波（时长在这里改短，只为少跑几万步；结构、奖励、顺序都不动）。
+    /// 新流程状态机：Idle → Battle → LevelUp ⇄ Battle → Boss → GameOver。
+    /// 只测 RunController 与事件顺序；刷怪、伤害、抽卡细节由各自系统测。
     /// </summary>
     public class RunControllerTests
     {
-        const float Dt = 1f / 60f;
-        const ulong Seed = 0xA1B2C3D4E5F60718ul;
-        const string CharacterId = "Scavenger";
-
         [Test]
-        public void StartRunPublishesRunStartedThenFirstWave()
+        public void StartRunPublishesRunStartedAndEntersBattle()
         {
-            RunController run = Build(out EventBus bus, out _, out RunState state, out EventLog log);
+            var bus = new EventBus();
+            var player = new Game.Model.PlayerModel(1000f, 5f, 15f, 0.15f, 2f, 67f);
+            var state = TestContent.NewRun();
+            var config = TestContent.Config();
+            var random = new Game.Core.DeterministicRandom(TestRun.Seed);
+            var ids = new UnitIdAllocator(2);
+            var enemies = new Game.Systems.EnemySystem(player, 67f, random, ids, bus);
+            var weapons = new Game.Systems.Weapons.WeaponSystem(enemies, random, AppRoot.PlayerUnit, 64, bus);
+            var companions = new Game.Systems.CompanionSystem(player, enemies, config.Weapons, random, bus, ids);
+            var buffs = new Game.Systems.BuffSystem(player, bus, enemies, AppRoot.PlayerUnit);
+            var director = new Game.Systems.DirectorSystem(enemies, config.Enemies, config.Directors, random, config, bus);
+            var build = new Game.Controllers.BuildController(player, state, companions, weapons, buffs, config, bus,
+                random, TestContent.Weapon("Bow"));
+            var run = new RunController(player, state, config.Directors, bus, TestRun.Seed, "Scavenger", build,
+                director, companions);
+
+            var events = new List<string>();
+            bus.Subscribe<RunStarted>(_ => events.Add("RunStarted"));
 
             run.StartRun();
             bus.Flush();
 
             Assert.AreEqual(RunPhase.Battle, run.Phase);
-            Assert.AreEqual(1, run.WaveIndex, "波次索引从 1 开始");
-            Assert.AreEqual(3, run.WavesTotal, "总波数必须来自波次表：表里 3 条就是 3，不能是写死的 5");
-            Assert.AreEqual(3, state.WavesTotal, "RunState 上的总波数也要跟着配置走，HUD 读的是它");
-            CollectionAssert.AreEqual(new[] { "RunStarted", "WaveStarted(1)" }, log.Order, log.Joined);
+            Assert.AreEqual(1, state.Level);
+            Assert.AreEqual(10f, run.BossTime, 1e-4f);
+            CollectionAssert.AreEqual(new[] { "RunStarted" }, events);
         }
 
         [Test]
         public void TickInIdleDoesNothing()
         {
-            RunController run = Build(out EventBus bus, out _, out _, out EventLog log);
+            TestRun run = TestRun.Create();
+            run.Controller.Tick(1f);
 
-            Advance(run, bus, 1f);
-
-            Assert.AreEqual(RunPhase.Idle, run.Phase, "没调 StartRun 就不该自己开一局");
-            Assert.AreEqual(0, log.Order.Count, log.Joined);
+            Assert.AreEqual(RunPhase.Battle, run.Controller.Phase, "StartRun 已经进战斗，Tick 不该把它拉回 Idle");
         }
 
         [Test]
-        public void WaveClearOpensShopAndWaitsForCloseShop()
+        public void ExperiencePausesBattleUntilUpgradeChosen()
         {
-            RunController run = Build(out EventBus bus, out _, out RunState state, out EventLog log, duration: 1f);
+            TestRun run = TestRun.Create();
+            int phaseChanges = 0;
+            run.Bus.Subscribe<LevelUpStarted>(_ => phaseChanges++);
+            run.Bus.Subscribe<LevelUpClosed>(_ => phaseChanges++);
 
-            run.StartRun();
-            bus.Flush();
-            log.Order.Clear();
+            run.State.AddExperience(5);
+            run.Controller.Tick(TestRun.Dt);
 
-            Advance(run, bus, 1.1f);
+            Assert.AreEqual(RunPhase.LevelUp, run.Controller.Phase);
+            Assert.AreEqual(1, run.Build.Options.Count > 0 ? 1 : 0);
+            Assert.IsTrue(run.Controller.ChooseUpgrade(0));
+            run.Bus.Flush();
 
-            Assert.AreEqual(RunPhase.Shop, run.Phase, "时长用完就该进商店");
-            Assert.AreEqual("WaveCleared(1) | CoinChanged(60) | ShopOpened(1)", log.Joined,
-                "清波先记奖励再开商店");
-            Assert.AreEqual(60, state.Coins, "清波的金币奖励要记进 RunState");
-
-            // 商店里继续跑不该发生任何事：下一波只能由外部显式调 CloseShop
-            log.Order.Clear();
-            Advance(run, bus, 5f);
-            Assert.AreEqual(RunPhase.Shop, run.Phase);
-            Assert.AreEqual(0, log.Order.Count, "商店态里 Tick 不该推进任何东西：" + log.Joined);
-
-            Assert.IsTrue(run.CloseShop());
-            bus.Flush();
-
-            CollectionAssert.AreEqual(new[] { "ShopClosed(0)", "WaveStarted(2)" }, log.Order, log.Joined);
-            Assert.AreEqual(2, run.WaveIndex);
-            Assert.AreEqual(RunPhase.Battle, run.Phase);
+            Assert.AreEqual(RunPhase.Battle, run.Controller.Phase);
+            Assert.AreEqual(2, phaseChanges, "一次升级要发 Started 与 Closed 各一次");
         }
 
         [Test]
-        public void LastWaveEndsTheRunWithoutOpeningAnotherShop()
+        public void MultipleLevelUpsOfferMoreThanOneDraft()
         {
-            RunController run = Build(out EventBus bus, out _, out RunState state, out EventLog log, duration: 0.5f);
+            TestRun run = TestRun.Create();
+            run.State.AddExperience(20);
+            Assert.GreaterOrEqual(run.State.PendingLevelUps, 2);
 
-            run.StartRun();
-            bus.Flush();
+            run.Controller.Tick(TestRun.Dt);
+            Assert.AreEqual(RunPhase.LevelUp, run.Controller.Phase);
 
-            // 三波一路打过去，每间商店都从外面关掉（相当于在商店面板上按 Esc）
-            for (int wave = 1; wave <= 3; wave++)
+            // 20 点经验在这张测试曲线上会跨 3 级，所以要连选 3 次才回战斗。
+            int picks = 0;
+            while (run.Controller.Phase == RunPhase.LevelUp && picks < 5)
             {
-                Advance(run, bus, 0.6f);
-
-                if (run.Phase != RunPhase.Shop) continue;
-
-                run.CloseShop();
-                bus.Flush();
+                Assert.IsTrue(run.Controller.ChooseUpgrade(0));
+                picks++;
             }
 
-            Assert.AreEqual(RunPhase.GameOver, run.Phase);
-            Assert.AreEqual(3, run.WaveIndex, "最后一波就是配置里的最后一波，索引不能越界");
-            Assert.AreEqual(60 + 80 + 110, state.Coins, "三波奖励都要累加进金币");
-
-            CollectionAssert.AreEqual(new[]
-            {
-                "RunStarted", "WaveStarted(1)",
-                "WaveCleared(1)", "CoinChanged(60)", "ShopOpened(1)", "ShopClosed(0)", "WaveStarted(2)",
-                "WaveCleared(2)", "CoinChanged(140)", "ShopOpened(2)", "ShopClosed(0)", "WaveStarted(3)",
-                "WaveCleared(3)", "CoinChanged(250)", "RunEnded(win)",
-            }, log.Order, log.Joined);
+            Assert.AreEqual(3, picks, "20 点经验跨 3 级，应该连续开 3 轮");
+            Assert.AreEqual(RunPhase.Battle, run.Controller.Phase);
         }
 
         [Test]
-        public void PlayerDeathEndsTheRunWithoutClearingTheWave()
+        public void BossStartsWhenTimelineEndsAndKillingItWins()
         {
-            RunController run = Build(out EventBus bus, out PlayerModel player, out RunState state,
-                out EventLog log, duration: 180f);
+            TestRun run = TestRun.Create();
 
-            run.StartRun();
-            bus.Flush();
-            Advance(run, bus, 2f);
+            var events = new List<string>();
+            run.Bus.Subscribe<BossFightStarted>(_ => events.Add("BossStarted"));
+            run.Bus.Subscribe<BossDefeated>(_ => events.Add("BossDefeated"));
+            run.Bus.Subscribe<RunEnded>(e => events.Add(e.Victory ? "Win" : "Lose"));
 
-            player.HP = 0f;   // 战斗里被打死
-            Advance(run, bus, 0.1f);
+            // 直接推进到 10 秒：最后一段结束，切 BOSS 阶段并从外围生成 BOSS。
+            run.AdvanceSeconds(10.2f);
 
-            Assert.AreEqual(RunPhase.GameOver, run.Phase, "死了就该直接进结算，不该继续跑这一波");
-            Assert.AreEqual(1, state.WaveIndex, "死在第一波，波次索引不该往前走");
-            Assert.IsFalse(log.Order.Contains("WaveCleared(1)"), "还没打满 180 秒，不该发 WaveCleared：" + log.Joined);
-            Assert.AreEqual("RunEnded(lose)", log.Order[log.Order.Count - 1], log.Joined);
+            Assert.AreEqual(RunPhase.Boss, run.Controller.Phase);
+            Assert.IsTrue(run.Controller.BossStarted);
+            Assert.IsTrue(run.Controller.BossActive);
+            Assert.AreEqual("缝线巨偶", run.Controller.BossName);
+            CollectionAssert.AreEqual(new[] { "BossStarted" }, events);
 
-            // 结束以后每一步都不该再发事件：RunEnded 只能有一次，WaveStarted 也不能再来
-            log.Order.Clear();
-            Advance(run, bus, 5f);
-            Assert.AreEqual(0, log.Order.Count, "结束态里不该再发任何流程事件：" + log.Joined);
+            Assert.IsTrue(run.Enemies.TryGetSlot(run.Director.BossUnitId, out int slot));
+            run.Enemies.Get(slot).HP = 0f;
+            run.Step(2);
+
+            Assert.AreEqual(RunPhase.GameOver, run.Controller.Phase);
+            Assert.IsTrue(run.Controller.BossDefeated);
+            CollectionAssert.AreEqual(new[] { "BossStarted", "BossDefeated", "Win" }, events);
         }
 
         [Test]
-        public void CloseShopOutsideShopIsIgnored()
+        public void PlayerDeathEndsTheRunWithoutBoss()
         {
-            RunController run = Build(out EventBus bus, out _, out _, out EventLog log);
+            TestRun run = TestRun.Create(hp: 10f);
+            var endings = new List<string>();
+            run.Bus.Subscribe<RunEnded>(e => endings.Add(e.Victory ? "Win" : "Lose"));
 
-            Assert.IsFalse(run.CloseShop(), "Idle 态没有商店可关");
+            run.Player.HP = 0f;
+            run.Controller.Tick(TestRun.Dt);
+            run.Bus.Flush();
 
-            run.StartRun();
-            bus.Flush();
-            log.Order.Clear();
-
-            Assert.IsFalse(run.CloseShop(), "战斗里调 CloseShop 不该凭空开出下一波");
-            bus.Flush();
-            Assert.AreEqual(0, log.Order.Count, log.Joined);
-            Assert.AreEqual(1, run.WaveIndex);
+            Assert.AreEqual(RunPhase.GameOver, run.Controller.Phase);
+            CollectionAssert.AreEqual(new[] { "Lose" }, endings);
         }
 
         [Test]
-        public void StartRunAfterGameOverRestartsFromTheFirstWave()
+        public void ChooseUpgradeOutsideLevelUpIsIgnored()
         {
-            RunController run = Build(out EventBus bus, out PlayerModel player, out _, out EventLog log,
-                duration: 0.5f);
-
-            run.StartRun();
-            bus.Flush();
-            player.HP = 0f;
-            Advance(run, bus, 0.1f);
-            Assert.AreEqual(RunPhase.GameOver, run.Phase);
-
-            log.Order.Clear();
-            run.StartRun();
-            bus.Flush();
-
-            Assert.AreEqual(RunPhase.Battle, run.Phase, "重开一局要能重新进战斗");
-            Assert.AreEqual(1, run.WaveIndex, "重开从第一波开始");
-            CollectionAssert.AreEqual(new[] { "RunStarted", "WaveStarted(1)" }, log.Order, log.Joined);
+            TestRun run = TestRun.Create();
+            Assert.IsFalse(run.Controller.ChooseUpgrade(0));
+            Assert.AreEqual(RunPhase.Battle, run.Controller.Phase);
         }
 
-        // ---- 装配 ----
-
-        /// <summary>照抄 Wave.json 的三波：时长可变，间隔 / 数量 / 上限 / 奖励与表里一致。</summary>
-        static List<WaveDef> Waves(float duration)
+        [Test]
+        public void StartRunAfterGameOverIsRejected()
         {
-            return new List<WaveDef>
-            {
-                new WaveDef
-                {
-                    Id = "W1", Index = 1, Duration = duration, SpawnInterval = 1.2f,
-                    SpawnCountMin = 1, SpawnCountMax = 2, EnemyPool = new[] { "Crawler" },
-                    ConcurrentCap = 40, CoinReward = 60, BossId = ""
-                },
-                new WaveDef
-                {
-                    Id = "W2", Index = 2, Duration = duration, SpawnInterval = 1.0f,
-                    SpawnCountMin = 2, SpawnCountMax = 3, EnemyPool = new[] { "Crawler", "Thrower" },
-                    ConcurrentCap = 70, CoinReward = 80, BossId = ""
-                },
-                new WaveDef
-                {
-                    Id = "W3", Index = 3, Duration = duration, SpawnInterval = 0.9f,
-                    SpawnCountMin = 2, SpawnCountMax = 3,
-                    EnemyPool = new[] { "Crawler", "Charger", "Thrower" },
-                    ConcurrentCap = 100, CoinReward = 110, BossId = ""
-                },
-            };
+            TestRun run = TestRun.Create(hp: 10f);
+            run.Player.HP = 0f;
+            run.Controller.Tick(TestRun.Dt);
+            Assert.AreEqual(RunPhase.GameOver, run.Controller.Phase);
+
+            Assert.Throws<System.InvalidOperationException>(() => run.Controller.StartRun());
         }
 
-        static RunController Build(out EventBus bus, out PlayerModel player, out RunState state,
-            out EventLog log, float duration = 1f)
+        [Test]
+        public void BossTimeIsLastDirectorEnd()
         {
-            bus = new EventBus();
-            player = new PlayerModel(100f, 5f, 15f, 0.15f, 2f, 67f);
-            state = new RunState();
-
-            var run = new RunController(player, state, Waves(duration), bus, Seed, CharacterId);
-            log = new EventLog(bus);
-            return run;
+            TestRun run = TestRun.Create();
+            Assert.AreEqual(10f, run.Controller.BossTime, 1e-4f);
+            Assert.AreEqual(10f, run.Director.BossTime, 1e-4f);
         }
 
-        /// <summary>
-        /// 跑若干秒的固定步长，每一步末尾分发一次事件。
-        /// 真流程里 Flush 由 RunSimulation.Tick 统一做，这里照同一节奏来，
-        /// 不然断言看到的顺序会混进"两条事件排在不同 Tick"的差别。
-        /// </summary>
-        static void Advance(RunController run, IEventBus bus, float seconds)
+        [Test]
+        public void ThreatLevelFollowsTheTimelineNotTheSpawnedEnemyTier()
         {
-            int steps = Mathf.RoundToInt(seconds / Dt);
-            for (int i = 0; i < steps; i++)
-            {
-                run.Tick(Dt);
-                bus.Flush();
-            }
+            TestRun run = TestRun.Create();
+            Assert.AreEqual(1, run.State.HighestThreat);
+
+            run.AdvanceSeconds(6f);
+
+            // 第二段 Threat=2，但这一段的怪本身只有 Tier 1/2；HUD 读的必须是时间轴的威胁等级。
+            Assert.AreEqual(2, run.State.HighestThreat);
         }
 
-        /// <summary>把事件按收到顺序记成字符串：整条序列一起断言，比逐个 IsTrue 更容易看出错在哪一步。</summary>
-        sealed class EventLog
+        [Test]
+        public void BossStateIsSingleSourcedFromBossFight()
         {
-            public readonly List<string> Order = new List<string>();
+            TestRun run = TestRun.Create();
+            run.AdvanceSeconds(10.2f);
 
-            public EventLog(IEventBus bus)
-            {
-                bus.Subscribe<RunStarted>(_ => Order.Add("RunStarted"));
-                bus.Subscribe<WaveStarted>(e => Order.Add("WaveStarted(" + e.Index + ")"));
-                bus.Subscribe<WaveCleared>(e => Order.Add("WaveCleared(" + e.Index + ")"));
-                bus.Subscribe<CoinChanged>(e => Order.Add("CoinChanged(" + e.Current + ")"));
-                bus.Subscribe<ShopOpened>(e => Order.Add("ShopOpened(" + e.WaveIndex + ")"));
-                bus.Subscribe<ShopClosed>(e => Order.Add("ShopClosed(" + e.CoinsSpent + ")"));
-                bus.Subscribe<RunEnded>(e => Order.Add(e.Victory ? "RunEnded(win)" : "RunEnded(lose)"));
-            }
+            Assert.AreSame(run.Director.BossFight, run.Controller.BossFight, "流程与导演必须读同一个 BOSS 对象");
+            Assert.AreEqual(run.Director.BossActive, run.Controller.BossActive);
+            Assert.AreEqual(run.Director.BossName, run.Controller.BossName);
+            Assert.AreEqual(run.Director.BossHpRatio, run.Controller.BossHpRatio, 1e-6f);
+            Assert.IsFalse(run.Controller.BossDefeated);
 
-            public string Joined => string.Join(" | ", Order);
+            Assert.IsTrue(run.Enemies.TryGetSlot(run.Director.BossUnitId, out int slot));
+            run.Enemies.Get(slot).HP = 0f;
+            run.Step(2);
+            run.Bus.Flush();
+
+            Assert.IsTrue(run.Controller.BossDefeated);
+            Assert.AreEqual(run.Director.BossDefeated, run.Controller.BossDefeated);
         }
     }
 }

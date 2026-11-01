@@ -120,13 +120,12 @@ namespace Game.Tests
             // 移除中间的槽位会触发格内列表末尾交换，其余单位的槽位号必须原样保留
             grid.Release(second);
 
-            Assert.AreEqual(first, grid.QueryNearest(new Vector2(-1f, 0f), 0.1f));
-            Assert.AreEqual(third, grid.QueryNearest(new Vector2(1f, 0f), 0.1f));
-            Assert.AreEqual(-1, grid.QueryNearest(new Vector2(0f, 0f), 0.1f), "被移除的槽位不能再被查到");
-
             var results = new List<int>();
             grid.QueryCircle(Vector2.zero, 5f, results);
             CollectionAssert.AreEquivalent(new[] { first, third }, results);
+            Assert.IsFalse(grid.IsAllocated(second), "被移除的槽位不能再被查到");
+            Assert.IsTrue(grid.IsAllocated(first));
+            Assert.IsTrue(grid.IsAllocated(third));
         }
 
         [Test]
@@ -151,39 +150,6 @@ namespace Game.Tests
 
             results.Clear();
             Assert.AreEqual(0, grid.QueryCircle(Vector2.zero, 3f, results), "旧位置已经不在表里");
-        }
-
-        [Test]
-        public void QueryNearestReturnsMinusOneOnEmptyGrid()
-        {
-            var grid = new SpatialGrid();
-
-            Assert.AreEqual(-1, grid.QueryNearest(Vector2.zero, 10f));
-        }
-
-        [Test]
-        public void QueryNearestReturnsClosestOfSeveral()
-        {
-            var grid = new SpatialGrid();
-            var source = new FakeSource();
-            Place(grid, source, new Vector2(1.2f, 0f));
-            int closest = Place(grid, source, new Vector2(0.4f, 0.3f));   // 0.5 米
-            Place(grid, source, new Vector2(-2.5f, 0f));
-            grid.Rebuild(Vector2.zero, source);
-
-            Assert.AreEqual(closest, grid.QueryNearest(Vector2.zero, 4f));
-        }
-
-        [Test]
-        public void QueryNearestRespectsMaxRadius()
-        {
-            var grid = new SpatialGrid();
-            var source = new FakeSource();
-            Place(grid, source, new Vector2(2f, 0f));
-            grid.Rebuild(Vector2.zero, source);
-
-            Assert.AreEqual(-1, grid.QueryNearest(Vector2.zero, 1.5f), "最近的也在 1.5 米外，应当是 -1");
-            Assert.AreEqual(0, grid.QueryNearest(Vector2.zero, 2.5f));
         }
     }
 }

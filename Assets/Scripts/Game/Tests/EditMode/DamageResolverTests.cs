@@ -1,5 +1,6 @@
-using Game.Config;
+﻿using Game.Config;
 using Game.Core.Events;
+using Game.Model;
 using Game.Systems;
 using NUnit.Framework;
 using UnityEngine;

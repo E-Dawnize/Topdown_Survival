@@ -158,5 +158,30 @@ namespace Game.Tests
             Assert.Greater(m.Position.x, 2.2f);
             Assert.Less(m.Position.x, 2.9f);
         }
+
+        [Test]
+        public void DashLatchSurvivesFramesWithoutASimulationStep()
+        {
+            // 模拟 120Hz/定格：有帧只采样、不跑固定步。按钮边沿必须留到下一步，
+            // 不能被下一帧的 WasPressedThisFrame=false 覆盖掉。
+            var buffer = new InputBuffer();
+            buffer.Capture(new InputSnapshot { Move = new Vector2(1f, 0f), DashPressed = true });
+            buffer.Capture(new InputSnapshot { Move = new Vector2(1f, 0f) });
+
+            Assert.IsTrue(buffer.Current.DashPressed, "零步帧不应清掉锁存的冲刺");
+
+            PlayerController c = Make(out PlayerModel m, out EventBus bus);
+            int dashed = 0;
+            bus.Subscribe<PlayerDashed>(_ => dashed++);
+
+            InputSnapshot snapshot = buffer.Current;
+            c.Tick(Dt, ref snapshot);
+            buffer.ConsumeSimulationStep();
+            bus.Flush();
+
+            Assert.AreEqual(1, dashed);
+            Assert.IsTrue(m.IsDashing);
+            Assert.IsFalse(buffer.Current.DashPressed, "模拟步消费后应清掉边沿");
+        }
     }
 }

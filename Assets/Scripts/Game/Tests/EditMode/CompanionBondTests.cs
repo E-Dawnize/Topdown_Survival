@@ -224,28 +224,13 @@ namespace Game.Tests
         }
 
         [Test]
-        public void RestartingTheRunClearsRosterAndBonds()
+        public void ResettingCompanionsClearsRosterAndBonds()
         {
             var bus = new EventBus();
             PlayerModel player = Player();
-            var run = new RunState();
             var enemies = new EnemySystem(player, ArenaHalf);
             var weapons = new Dictionary<string, WeaponDef> { ["Bow"] = BowDef() };
             var companions = new CompanionSystem(player, enemies, weapons, new DeterministicRandom(Seed), bus);
-
-            var waves = new List<WaveDef>
-            {
-                new WaveDef
-                {
-                    Id = "W1", Index = 1, Duration = 1f, SpawnInterval = 1f, SpawnCountMin = 0, SpawnCountMax = 0,
-                    EnemyPool = new string[0], ConcurrentCap = 0, CoinReward = 0, BossId = ""
-                }
-            };
-
-            var controller = new RunController(player, run, waves, bus, Seed, "Scavenger", null, companions);
-
-            controller.StartRun();
-            bus.Flush();
 
             CompanionDef[] defs = SameFaction(CompanionFaction.Machine, 2);
             companions.Recruit(defs[0]);
@@ -254,13 +239,7 @@ namespace Game.Tests
             Assert.AreEqual(1, companions.ActiveBonds.Count);
             Assert.AreEqual(0.10f, player.Stats[StatType.AttackSpeed], 1e-6f);
 
-            // 整局重开：先把这一局打到结束（玩家死亡 → GameOver），再开一局
-            player.HP = 0f;
-            controller.Tick(Dt);
-            Assert.AreEqual(RunPhase.GameOver, controller.Phase, "玩家死了该进结算态，否则 StartRun 会被忽略");
-
-            controller.StartRun();
-            bus.Flush();
+            companions.ResetForNewRun();
 
             Assert.AreEqual(0, companions.Count, "换局要把队伍清空");
             Assert.AreEqual(0, companions.ActiveBonds.Count, "换局要把羁绊清空");

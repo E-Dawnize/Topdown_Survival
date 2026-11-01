@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Game.Config;
 using Game.Core.Events;
 using Game.Model;
@@ -55,8 +56,8 @@ namespace Game.Tests
                 Speed = 0f,
                 AttackRange = 1f,
                 AttackInterval = 1f,
-                CoinDrop = 0,
-                BodyRadius = BodyRadius
+                XpValue = 0,
+                BodyRadius = BodyRadius, Scale = 1f
             };
         }
 
@@ -276,6 +277,60 @@ namespace Game.Tests
             Step(weapons, enemies, new ShooterStats(0.2f, 1f, 2f, 0f), 40);
 
             Assert.AreEqual(1000f - 19.2f, enemies.Get(slot).HP, 1e-3f);
+        }
+
+        [Test]
+        public void ShooterStatsFromStatBlockReadsTheSameSixStats()
+        {
+            // 玩家与旅伴的调用方都走 From(StatBlock)：这里把六列逐个钉死，替换手写构造时不会有列表错位
+            var stats = new StatBlock();
+            stats.SetBase(StatType.Attack, 0.2f);
+            stats.SetBase(StatType.CritChance, 0.15f);
+            stats.SetBase(StatType.CritDamage, 1.8f);
+            stats.SetBase(StatType.AttackSpeed, 0.25f);
+            stats.SetBase(StatType.ProjectileCount, 2f);
+            stats.SetBase(StatType.Range, 0.1f);
+
+            ShooterStats snapshot = ShooterStats.From(stats);
+
+            Assert.AreEqual(0.2f, snapshot.AttackBonus, 1e-6f);
+            Assert.AreEqual(0.15f, snapshot.CritChance, 1e-6f);
+            Assert.AreEqual(1.8f, snapshot.CritDamage, 1e-6f);
+            Assert.AreEqual(0.25f, snapshot.AttackSpeed, 1e-6f);
+            Assert.AreEqual(2, snapshot.BonusProjectiles, "弹道数取整与调用方原来的 Mathf.RoundToInt 一致");
+            Assert.AreEqual(0.1f, snapshot.RangeBonus, 1e-6f);
+        }
+
+        [Test]
+        public void HitPublishesOneDamagedEventAndDodgedHitPublishesNone()
+        {
+            // 受击事件统一由 WeaponDamage.ApplyAndPublish 发：真扣到血才发，闪避不发
+            var bus = new EventBus();
+            var player = new PlayerModel(1000f, 5f, 15f, 0.15f, 2f, ArenaHalf);
+            var enemies = new EnemySystem(player, ArenaHalf, null, null, bus);
+            var weapons = new WeaponSystem(enemies, new FixedRandom(0.99f), new UnitId(1), 64, bus);
+            weapons.AddWeapon(BowDef());
+            int slot = enemies.Spawn(DummyDef(), new Vector2(3f, 0f));
+
+            var damaged = new List<UnitDamaged>();
+            bus.Subscribe<UnitDamaged>(damaged.Add);
+
+            Step(weapons, enemies, NoCrit, 40);
+            bus.Flush();
+
+            Assert.AreEqual(1, damaged.Count, "一发箭只该发一条 UnitDamaged");
+            Assert.AreEqual(enemies.Get(slot).Id, damaged[0].Target);
+            Assert.AreEqual(1, damaged[0].Source.Value, "事件来源是射手自己的 UnitId");
+            Assert.AreEqual(BowDamage, damaged[0].Amount, 1e-3f);
+            Assert.IsFalse(damaged[0].FromEffect);
+
+            // 把敌人闪避拉满：接下来的命中被闪掉，不该再发受击事件
+            enemies.Get(slot).Stats.SetBase(StatType.Dodge, 1f);
+            damaged.Clear();
+            Step(weapons, enemies, NoCrit, 60);
+            bus.Flush();
+
+            Assert.AreEqual(0, damaged.Count, "闪避掉的命中不该触发受击表现");
         }
 
         [Test]
