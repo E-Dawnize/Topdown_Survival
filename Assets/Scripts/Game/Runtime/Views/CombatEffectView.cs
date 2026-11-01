@@ -17,6 +17,7 @@ namespace Game.Views
         static readonly Color ChainColor = new Color(0.55f, 0.85f, 1f, 0.85f);
         static readonly Color OrbitColor = new Color(0.72f, 0.88f, 1f, 0.75f);
         static readonly Color ThornsColor = new Color(0.55f, 1f, 0.62f, 0.8f);
+        static readonly Color CollectColor = new Color(0.45f, 0.92f, 1f, 0.9f);
 
         IEventBus _bus;
         bool _subscribed;
@@ -45,6 +46,7 @@ namespace Game.Views
             if (_subscribed || _bus == null) return;
 
             _bus.Subscribe<CombatAreaEffect>(OnAreaEffect);
+            _bus.Subscribe<ExperienceCollectPulse>(OnExperienceCollectPulse);
             _subscribed = true;
         }
 
@@ -53,6 +55,7 @@ namespace Game.Views
             if (!_subscribed) return;
 
             _bus?.Unsubscribe<CombatAreaEffect>(OnAreaEffect);
+            _bus?.Unsubscribe<ExperienceCollectPulse>(OnExperienceCollectPulse);
             _subscribed = false;
         }
 
@@ -93,6 +96,14 @@ namespace Game.Views
 
             CombatEffects.Ring(new Vector3(e.X, 0.05f, e.Z), startRadius, Mathf.Max(0.2f, e.Radius),
                 color, duration);
+        }
+
+        /// <summary>全屏吸经验的扩散环。半径直接铺到屏幕外，给玩家“整屏都扫过一遍”的直觉。</summary>
+        void OnExperienceCollectPulse(ExperienceCollectPulse e)
+        {
+            var origin = new Vector3(e.X, 0.06f, e.Z);
+            CombatEffects.Ring(origin, 0.8f, 14f, CollectColor, 0.45f);
+            CombatEffects.Ring(origin, 0.3f, 7f, new Color(0.85f, 0.98f, 1f, 0.8f), 0.28f);
         }
     }
 }

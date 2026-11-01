@@ -92,6 +92,7 @@ namespace Game.Views
             On<BossFightStarted>(OnBossStarted);
             On<BossEnraged>(OnBossEnraged);
             On<PlayerDamaged>(OnPlayerDamaged);
+            On<ExperienceCollectPulse>(OnExperienceCollectPulse);
         }
 
         void LateUpdate()
@@ -133,6 +134,11 @@ namespace Game.Views
             ShowHint("BOSS 狂暴");
         }
 
+        void OnExperienceCollectPulse(ExperienceCollectPulse e)
+        {
+            ShowHint("全屏吸取 " + e.Orbs + " 枚经验　+" + e.TotalExperience + " XP");
+        }
+
         /// <summary>
         /// 每次实际掉血都在血条右侧弹一个数字。以前只有屏幕红闪和血条下降，后排敌人/远程弹丸打来时
         /// 玩家分不清是“被谁打了”还是“血条自己掉了”；数字至少把“什么时候掉了多少”钉住。
@@ -140,6 +146,14 @@ namespace Game.Views
         void OnPlayerDamaged(PlayerDamaged e)
         {
             EnsureWidgets();
+
+            // 世界飘字放在玩家头上；HUD 左上角的数字保留，作为屏幕边缘也能看到的兜底。
+            if (_player != null)
+            {
+                DamageNumbers.Show(new Vector3(_player.Position.x, 1.1f, _player.Position.y), e.Amount,
+                    false, true);
+            }
+
             if (_widgets.DamageText == null || e.Amount <= 0f) return;
 
             _widgets.DamageText.text = "-" + Mathf.CeilToInt(e.Amount);
@@ -279,6 +293,29 @@ namespace Game.Views
                     {
                         w.DashText.text = "冲刺就绪";
                         w.DashText.color = new Color(0.55f, 0.9f, 1f, 1f);
+                    }
+                }
+            }
+
+            if ((dirty & HudField.Collect) != 0)
+            {
+                if (w.CollectFill != null) w.CollectFill.fillAmount = values.CollectRatio;
+
+                if (w.CollectText != null)
+                {
+                    if (!values.HasPlayer)
+                    {
+                        w.CollectText.text = "E 全屏吸取";
+                    }
+                    else if (values.CollectTenths > 0)
+                    {
+                        w.CollectText.text = "吸取  " + (values.CollectTenths / 10f).ToString("0.0") + "s";
+                        w.CollectText.color = new Color(0.72f, 0.78f, 0.86f, 0.85f);
+                    }
+                    else
+                    {
+                        w.CollectText.text = "E 全屏吸取就绪";
+                        w.CollectText.color = new Color(0.55f, 0.92f, 1f, 1f);
                     }
                 }
             }

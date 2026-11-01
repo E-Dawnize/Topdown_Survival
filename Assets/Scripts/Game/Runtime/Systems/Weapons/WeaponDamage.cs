@@ -129,7 +129,7 @@ namespace Game.Systems.Weapons
 
             // 目标用模型自己的稳定 Id，不用槽位号：槽位会被复用，订阅方按 ID 对齐实体
             events?.Publish(new UnitDamaged(enemy.Id, damage.Source, result.Applied, damage.IsCrit,
-                result.RemainingHp, fromEffect));
+                result.RemainingHp, fromEffect, enemy.Position.x, enemy.Position.y));
             return result;
         }
 

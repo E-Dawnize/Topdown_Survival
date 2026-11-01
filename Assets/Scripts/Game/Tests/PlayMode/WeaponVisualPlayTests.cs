@@ -2,6 +2,7 @@ using System.Collections;
 using System.Reflection;
 using Game.Config;
 using Game.Core;
+using Game.Model;
 using Game.Systems.Weapons;
 using Game.Views;
 using NUnit.Framework;
@@ -197,6 +198,69 @@ namespace Game.Tests
             Assert.IsTrue(nockedAfterShot.gameObject.activeSelf, "冷却最后 0.28 秒应把新搭箭拉上弓");
 
             Object.Destroy(root);
+        }
+
+        [UnityTest]
+        public IEnumerator EnemyHealthBarAppearsAfterDamage()
+        {
+            var def = new EnemyDef
+            {
+                Id = "bar_test", Name = "血条靶", Behaviour = EnemyBehaviourType.Chase, Tier = 1,
+                HP = 10f, Damage = 0f, Speed = 0f, AttackRange = 1f, AttackInterval = 1f,
+                XpValue = 1, BodyRadius = 0.3f, Scale = 1f
+            };
+            var enemy = new EnemyModel(def, Vector2.zero, new UnitId(9001), EnemySpawnOptions.Default);
+
+            var go = new GameObject("HealthBarPlayTest");
+            UnitView view = go.AddComponent<UnitView>();
+            view.Bind(enemy);
+
+            enemy.HP = 5f;
+            view.Sync(1f);
+            yield return null;
+
+            LineRenderer[] lines = go.GetComponentsInChildren<LineRenderer>(true);
+            Assert.AreEqual(2, lines.Length, "血条由底条 + 填充条两条线组成");
+            int enabled = 0;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (lines[i].enabled) enabled++;
+            }
+            Assert.AreEqual(2, enabled, "掉血后血条应当可见");
+
+            enemy.HP = enemy.MaxHP;
+            view.Sync(1f);
+            yield return null;
+            enabled = 0;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (lines[i].enabled) enabled++;
+            }
+            Assert.AreEqual(0, enabled, "满血普通怪不显示头顶血条");
+
+            Object.Destroy(go);
+        }
+
+        [Test]
+        public void DamageNumbersCreateWorldTextAndCritSuffix()
+        {
+            DamageNumbers.Clear();
+            DamageNumbers.Show(new Vector3(1f, 1f, 2f), 123f, false);
+            DamageNumbers.Show(new Vector3(2f, 1f, 2f), 456f, true);
+
+            TextMesh[] texts = Object.FindObjectsOfType<TextMesh>();
+            bool normal = false;
+            bool crit = false;
+            for (int i = 0; i < texts.Length; i++)
+            {
+                if (texts[i].text == "123") normal = true;
+                if (texts[i].text == "暴击 456") crit = true;
+            }
+
+            Assert.IsTrue(normal, "普通伤害应生成数字飘字");
+            Assert.IsTrue(crit, "暴击飘字应带独立前缀，和普通伤害区分");
+
+            DamageNumbers.Clear();
         }
     }
 }

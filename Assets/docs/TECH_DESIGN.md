@@ -185,13 +185,13 @@ readonly struct PlayerDied    { float X, Z; }
 readonly struct RunEnded      { RunSummary Summary; bool Victory; }
 ```
 
-### 5.4 用一次冲刺验证架构
+### 5.4 用冲刺与全屏吸取验证架构
 
-按 E 冲刺的完整链路，如果这条链路能跑通，架构就没有明显断裂：
+按空格冲刺、按 E 全屏吸取的完整链路；如果这两条链路能跑通，架构就没有明显断裂：
 
 ```
-InputService 采样 → InputSnapshot{DashPressed}
-  → InputController 读快照 → PlayerController.TryDash()
+InputService 采样 → InputSnapshot{DashPressed, CollectPressed}
+  → InputController 读快照 → PlayerController.TryDash() / RunSimulation.TickExperienceCollect()
     → PlayerModel.StartDash()（改状态位、写速度、扣 CD）
       → EventBus.Publish(PlayerDashed{...})
         → DashVfxView 订阅 → 播残影
@@ -305,22 +305,22 @@ public sealed class ConfigDatabase {
 ```
 RunLoop.Update()
   1  InputService.Sample() → InputSnapshot
-  2  RunController.Tick(dt)           // 局状态、计时、金币结算
+  2  RunController.Tick(dt)           // 局状态、计时、升级暂停、BOSS 切换
   3  PlayerController.Tick(dt)
-  4  EnemySystem.Tick(dt)             // 追击/保持距离、起手、近战/冲锋/远程弹丸
-  5  SpatialGrid.Rebuild()            // 必须在敌人移动之后、武器结算之前
-  6  PlayerWeapons.Tick(dt)           // 投射物推进 → 开火
-  7  CompanionWeapons.Tick(dt)        // 同上，同一步内
-  8  Cleanup()                        // 死亡移除与掉落生成
-  9  PickupSystem.Tick(dt)
-  10 PickupSystem.Tick(dt)        // 经验磁吸与升级排队
-  11 BuffSystem.Tick(dt)          // 低血/周期回复
-  12 DirectorSystem.Tick(dt)      // 时间轴刷怪 / BOSS 召唤
+  4  TickExperienceCollect(dt)        // 全屏吸取经验（E/RB）
+  5  EnemySystem.Tick(dt)             // 追击/保持距离、起手、近战/冲锋/远程弹丸
+  6  SpatialGrid.Rebuild()            // 必须在敌人移动之后、武器结算之前
+  7  PlayerWeapons.Tick(dt)           // 投射物推进 → 开火
+  8  CompanionWeapons.Tick(dt)        // 同上，同一步内
+  9  Cleanup()                        // 死亡移除与掉落生成
+  10 PickupSystem.Tick(dt)            // 经验磁吸与升级排队
+  11 BuffSystem.Tick(dt)              // 低血/周期回复
+  12 DirectorSystem.Tick(dt)          // 时间轴刷怪 / BOSS 召唤
   13 EventBus.PublishPending()
   14 UnitView.SyncAll()               // LateUpdate，按插值系数
 ```
 
-实测实现比这份骨架多一层：`RunSimulation` 把 2–11 包成一次固定步长，主循环与集成测试走同一段代码；旅伴的移动（`CompanionSystem.TickMovement`）夹在玩家与敌人之间。
+实测实现比这份骨架多一层：`RunSimulation` 把 2–12 包成一次固定步长，主循环与集成测试走同一段代码；旅伴的移动（`CompanionSystem.TickMovement`）夹在玩家与敌人之间。
 
 模拟固定步长 1/60，每帧最多 3 步。渲染不跑在固定步长上：`LateUpdate` 用累加器余量在相邻两个模拟步之间插值，视图只吃插值结果。三处顺序不能动：空间哈希在移动之后（否则子弹打上一帧的位置）、清理在遍历之后（否则边遍历边删）、事件在整轮之后（否则订阅方读到半更新的状态）。
 
@@ -638,7 +638,7 @@ Assets/
                     ResultView, ResultLines, MainMenuView, PlayerView, UnitView,
                     CompanionView, PickupView, ProjectileView, WeaponVisual,
                     WeaponVisualStyle, WeaponVisualCatalog, CombatEffects, CombatEffectView,
-                    EnemyProjectileViewPool, CameraRig, CameraFocus, CameraPreset,
+                    EnemyProjectileViewPool, EnemyHealthBar, DamageNumbers, CameraRig, CameraFocus, CameraPreset,
                     PrimitiveViewFactory, SharedViewMaterial, UiFont, TimeFormat
     Services/       InputService
     Editor/         导表调用
@@ -725,21 +725,22 @@ Idle → Battle → (LevelUp ⇄ Battle) → Boss → GameOver
 ```
 1  RunController.Tick       计时/死亡/升级暂停/BOSS 切换
 2  PlayerController.Tick    玩家移动与冲刺
-3  CompanionSystem.Move     旅伴阻尼跟随
-4  EnemySystem.Tick         追击/分离/起手/近战/冲锋/远程弹丸 + PlayerDamaged
-5  SpatialGrid.Rebuild      敌人位置快照
-6  Player 属性快照           Attack/Crit/AttackSpeed/Projectile/Range → ShooterStats
-7  Regen + ContactDamage    生命回复、0.5s 碰撞伤害 + CombatAreaEffect
-8  WeaponSystem.Tick        投射物推进 → 开火
-9  CompanionSystem.Weapons  旅伴开火
-10 Cleanup                  死亡敌人 → UnitDied(IsElite/IsBoss) + 掉经验
-11 PickupSystem.Tick        磁吸 → RunState.AddExperience → ExperienceGained
-12 BuffSystem.Tick          低血判定/周期回复 / 范围伤害 + CombatAreaEffect
-13 DirectorSystem.Tick      按时间轴刷怪 / BOSS 召唤 / 半血狂暴
-14 EventBus.Flush           整步结束统一分发
+3  TickExperienceCollect    全屏吸取经验（E/RB，12s CD，只吸经验球）
+4  CompanionSystem.Move     旅伴阻尼跟随
+5  EnemySystem.Tick         追击/分离/起手/近战/冲锋/远程弹丸 + PlayerDamaged
+6  SpatialGrid.Rebuild      敌人位置快照
+7  Player 属性快照           Attack/Crit/AttackSpeed/Projectile/Range → ShooterStats
+8  Regen + ContactDamage    生命回复、0.5s 碰撞伤害 + CombatAreaEffect
+9  WeaponSystem.Tick        投射物推进 → 开火
+10 CompanionSystem.Weapons  旅伴开火
+11 Cleanup                  死亡敌人 → UnitDied(IsElite/IsBoss) + 掉经验
+12 PickupSystem.Tick        磁吸 → RunState.AddExperience → ExperienceGained
+13 BuffSystem.Tick          低血判定/周期回复 / 范围伤害 + CombatAreaEffect
+14 DirectorSystem.Tick      按时间轴刷怪 / BOSS 召唤 / 半血狂暴
+15 EventBus.Flush           整步结束统一分发
 ```
 
-`LevelUp` 与 `GameOver` 只跑 1 与 14；玩家死亡后只补发一次 `PlayerDied`。
+`LevelUp` 与 `GameOver` 只跑 1 与 15；玩家死亡后只补发一次 `PlayerDied`。
 
 ### 14.3 新增模块
 

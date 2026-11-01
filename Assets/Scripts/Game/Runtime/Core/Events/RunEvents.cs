@@ -102,8 +102,12 @@ namespace Game.Core.Events
         /// <summary>伤害来自 buff 的连锁效果。BuffSystem 不再对这类伤害二次触发，避免无限递归。</summary>
         public readonly bool FromEffect;
 
+        /// <summary>命中时目标的位置。飘字与击杀反应要用；清理阶段移除模型后事件里就拿不到了。</summary>
+        public readonly float X;
+        public readonly float Z;
+
         public UnitDamaged(UnitId target, UnitId source, float amount, bool isCrit, float remainingHp,
-            bool fromEffect = false)
+            bool fromEffect = false, float x = 0f, float z = 0f)
         {
             Target = target;
             Source = source;
@@ -111,6 +115,8 @@ namespace Game.Core.Events
             IsCrit = isCrit;
             RemainingHp = remainingHp;
             FromEffect = fromEffect;
+            X = x;
+            Z = z;
         }
     }
 
@@ -157,6 +163,26 @@ namespace Game.Core.Events
             Xp = xp;
             XpToNext = xpToNext;
             PendingLevelUps = pendingLevelUps;
+        }
+    }
+
+    /// <summary>
+    /// 全屏吸取经验已经结算。表现层画一个扩散环，HUD 弹一行提示；
+    /// 枚数与总经验都带上，提示不用再回头去读 PickupSystem。
+    /// </summary>
+    public readonly struct ExperienceCollectPulse
+    {
+        public readonly float X;
+        public readonly float Z;
+        public readonly int Orbs;
+        public readonly int TotalExperience;
+
+        public ExperienceCollectPulse(float x, float z, int orbs, int totalExperience)
+        {
+            X = x;
+            Z = z;
+            Orbs = orbs;
+            TotalExperience = totalExperience;
         }
     }
 

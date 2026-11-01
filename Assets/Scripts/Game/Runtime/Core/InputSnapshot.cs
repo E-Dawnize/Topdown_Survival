@@ -11,7 +11,10 @@ namespace Game.Core
         public Vector2 Move;
         public bool DashPressed;
 
-        public bool AnyPressed => DashPressed;
+        /// <summary>全屏吸取经验（E/RB）。一次按下只让第一个模拟步看到，和冲刺同一条边沿语义。</summary>
+        public bool CollectPressed;
+
+        public bool AnyPressed => DashPressed || CollectPressed;
     }
 
     /// <summary>
@@ -31,6 +34,7 @@ namespace Game.Core
         {
             _current.Move = edges.Move;
             _current.DashPressed |= edges.DashPressed;
+            _current.CollectPressed |= edges.CollectPressed;
             return _current;
         }
 
@@ -38,6 +42,7 @@ namespace Game.Core
         public void ConsumeSimulationStep()
         {
             _current.DashPressed = false;
+            _current.CollectPressed = false;
         }
 
         public void Clear()

@@ -336,5 +336,40 @@ namespace Game.Tests
             Assert.Less(second.HP, strong.HP,
                 "同一发穿透投射物不能把新敌人的槽位当成旧敌人的命中记录而跳过它");
         }
+
+        [Test]
+        public void FullScreenCollectConsumesTheInputAndRespectsCooldown()
+        {
+            var events = new EventBus();
+            var player = new PlayerModel(1000f, 5f, 15f, 0.15f, 2f, ArenaHalf);
+            RunState run = TestContent.NewRun();
+            var enemies = new EnemySystem(player, ArenaHalf);
+            var weapons = new WeaponSystem(enemies, new DeterministicRandom(WorldSeed), AppRoot.PlayerUnit, 16,
+                events);
+            var pickups = new PickupSystem(player, run, events, new DeterministicRandom(WorldSeed));
+            var simulation = new RunSimulation(player, new PlayerController(player, events), enemies, weapons, events,
+                null, null, pickups);
+
+            var pulses = new List<ExperienceCollectPulse>();
+            events.Subscribe<ExperienceCollectPulse>(pulses.Add);
+
+            pickups.DropEnemyLoot(new Vector2(30f, 0f), 5);
+
+            var input = new InputSnapshot { CollectPressed = true };
+            simulation.Tick(Dt, ref input);
+
+            Assert.AreEqual(5, run.TotalXp, "全屏吸取应当无视距离直接结算经验");
+            Assert.Greater(player.ExperienceCollectTimer, 0f, "吸到经验后进入冷却");
+            Assert.IsFalse(input.CollectPressed, "输入边沿应当被消费，不能同一次按键重复触发");
+            Assert.AreEqual(1, pulses.Count, "吸到经验后应发一条表现事件");
+            Assert.AreEqual(5, pulses[0].TotalExperience);
+
+            pickups.DropEnemyLoot(new Vector2(40f, 0f), 7);
+            input.CollectPressed = true;
+            simulation.Tick(Dt, ref input);
+
+            Assert.AreEqual(5, run.TotalXp, "冷却期间再按 E 不能继续吸");
+            Assert.Greater(pickups.Count, 0, "第二枚经验球应该还在地上");
+        }
     }
 }

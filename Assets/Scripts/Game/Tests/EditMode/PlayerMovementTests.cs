@@ -183,5 +183,20 @@ namespace Game.Tests
             Assert.IsTrue(m.IsDashing);
             Assert.IsFalse(buffer.Current.DashPressed, "模拟步消费后应清掉边沿");
         }
+
+        [Test]
+        public void CollectLatchSurvivesFramesWithoutASimulationStep()
+        {
+            var buffer = new InputBuffer();
+            buffer.Capture(new InputSnapshot { CollectPressed = true });
+            buffer.Capture(new InputSnapshot());
+
+            Assert.IsTrue(buffer.Current.CollectPressed, "零步帧不应清掉锁存的全屏吸取");
+            Assert.IsTrue(buffer.Current.AnyPressed);
+
+            buffer.ConsumeSimulationStep();
+
+            Assert.IsFalse(buffer.Current.CollectPressed, "模拟步消费后应清掉全屏吸取边沿");
+        }
     }
 }

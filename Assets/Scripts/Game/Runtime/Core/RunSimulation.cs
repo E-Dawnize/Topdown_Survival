@@ -90,6 +90,7 @@ namespace Game.Core
         void Step(float dt, ref InputSnapshot input)
         {
             _playerController.Tick(dt, ref input);
+            TickExperienceCollect(dt, ref input);
             _companions?.TickMovement(_player.Position, dt);
 
             Vector2 playerPos = _player.Position;
@@ -122,6 +123,31 @@ namespace Game.Core
             // 同屏上限算的是这一帧真实的存活数。升级阶段整步不跑，导演时间也随之暂停。
             _director?.Tick(dt, playerPos);
 
+        }
+
+        /// <summary>
+        /// 全屏吸取经验（E/RB）。冷却每步推进，只有真的吸到经验才进入冷却；
+        /// 输入边沿在这里消费，和冲刺一样只让一个模拟步看到这次按下。
+        /// </summary>
+        void TickExperienceCollect(float dt, ref InputSnapshot input)
+        {
+            if (_player.ExperienceCollectTimer > 0f)
+            {
+                _player.ExperienceCollectTimer -= dt;
+                if (_player.ExperienceCollectTimer < 0f) _player.ExperienceCollectTimer = 0f;
+            }
+
+            if (!input.CollectPressed) return;
+            input.CollectPressed = false;
+
+            if (_pickups == null || !_player.CanCollectExperience) return;
+
+            int orbs = _pickups.CollectAllExperience(out int totalExperience);
+            if (orbs <= 0) return;
+
+            _player.ExperienceCollectTimer = _player.ExperienceCollectCooldown;
+            _events?.Publish(new ExperienceCollectPulse(_player.Position.x, _player.Position.y, orbs,
+                totalExperience));
         }
 
         /// <summary>生命回复属性每个固定步结算一次。负数回复也允许，但不会把血量降到 0 以下。</summary>
@@ -173,7 +199,7 @@ namespace Game.Core
                 {
                     hitAny = true;
                     _events?.Publish(new UnitDamaged(enemy.Id, UnitId.Player, result.Applied, false,
-                        result.RemainingHp));
+                        result.RemainingHp, false, enemy.Position.x, enemy.Position.y));
                 }
             }
 
@@ -210,7 +236,7 @@ namespace Game.Core
                 _events?.Publish(new UnitDied(enemy.Id, enemy.LastDamageSource,
                     position.x, position.y, enemy.IsElite, enemy.IsBoss));
 
-                _pickups?.DropEnemyLoot(position, xp);
+                _pickups?.DropEnemyLoot(position, xp, PickupSystem.TierOf(enemy));
                 _enemies.Remove(slot);
             }
         }
