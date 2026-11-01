@@ -32,6 +32,8 @@ namespace Game.Systems.Weapons
             public Vector2 Position;
             public Vector2 PrevPosition;
             public Vector2 Velocity;
+            public Vector2 Origin;
+            public Vector2 AimPoint;
             public DamageInfo Damage;
             public int RemainingHits;
             public int Stamp;
@@ -51,14 +53,24 @@ namespace Game.Systems.Weapons
             public readonly Vector2 PrevPosition;
 
             public readonly Vector2 Velocity;
+
+            /// <summary>出膛点。表现层用它算已经飞了多远，从而沿“弓把 → 目标”的直线取位置。</summary>
+            public readonly Vector2 Origin;
+
+            /// <summary>这一发瞄准的目标点（世界 xz）。表现层从弓把直着画到这个点，不横向拐弯。</summary>
+            public readonly Vector2 AimPoint;
+
             public readonly bool IsCrit;
 
-            public Snapshot(int slot, Vector2 position, Vector2 prevPosition, Vector2 velocity, bool isCrit)
+            public Snapshot(int slot, Vector2 position, Vector2 prevPosition, Vector2 velocity,
+                Vector2 origin, Vector2 aimPoint, bool isCrit)
             {
                 Slot = slot;
                 Position = position;
                 PrevPosition = prevPosition;
                 Velocity = velocity;
+                Origin = origin;
+                AimPoint = aimPoint;
                 IsCrit = isCrit;
             }
 
@@ -101,12 +113,29 @@ namespace Game.Systems.Weapons
         /// <summary>当前存活的投射物数。</summary>
         public int Count => _active.Count;
 
+        /// <summary>换局清空。投射物池是长生命周期对象，重启同一进程时不能带着上一局的弹道。</summary>
+        public void Clear()
+        {
+            _active.Clear();
+            _free.Clear();
+            for (int i = _slots.Length - 1; i >= 0; i--) _free.Add(i);
+            _hitStamp = new int[64];
+            _nextStamp = 1;
+        }
+
         /// <summary>
         /// 生成一发。池满返回 false，调用方要处理（本次开火剩下的弹道就没了，日志里能看见池不够）。
         /// direction 必须是单位向量；pierce &lt;= 0 当 1 处理（至少要能命中一个目标，否则这发等于空气）。
         /// </summary>
         public bool Spawn(Vector2 position, Vector2 direction, float speed, float maxDistance, in DamageInfo damage,
             int pierce)
+        {
+            // 老调用方没有目标点：退化成射程终点，只影响表现层。
+            return Spawn(position, direction, speed, maxDistance, position + direction * maxDistance, damage, pierce);
+        }
+
+        public bool Spawn(Vector2 position, Vector2 direction, float speed, float maxDistance, Vector2 aimPoint,
+            in DamageInfo damage, int pierce)
         {
             if (_free.Count == 0) return false;
 
@@ -117,6 +146,8 @@ namespace Game.Systems.Weapons
             slot.Position = position;
             slot.PrevPosition = position;   // 刚出膛这一帧不插值，否则会从上一个用了这个槽位的弹道飞过来
             slot.Velocity = direction * speed;
+            slot.Origin = position;
+            slot.AimPoint = aimPoint;
             slot.Damage = damage;
             slot.RemainingHits = pierce > 0 ? pierce : 1;
             slot.Stamp = NextStamp();
@@ -155,7 +186,7 @@ namespace Game.Systems.Weapons
 
             Slot slot = _slots[_active[ordinal]];
             snapshot = new Snapshot(_active[ordinal], slot.Position, slot.PrevPosition, slot.Velocity,
-                slot.Damage.IsCrit);
+                slot.Origin, slot.AimPoint, slot.Damage.IsCrit);
             return true;
         }
 
@@ -208,7 +239,10 @@ namespace Game.Systems.Weapons
                 // 快照里可能残留已移除的槽位，用前问一下
                 EnemyModel enemy = enemies.Get(enemySlot);
                 if (enemy == null || !enemy.IsAlive || enemy.IsDead) continue;
-                if (_hitStamp[enemySlot] == slot.Stamp) continue;   // 本发已经打过这个身体
+
+                // 命中记录按稳定实体 ID 存，不按槽位。槽位被新敌人复用时，旧投射物
+                // 不会把“上一具尸体”的命中戳当成新敌人的，从而漏掉它。
+                if (_hitStamp[enemy.Id.Value] == slot.Stamp) continue;
 
                 float reach = enemy.Radius + BodyRadius;
                 if (SegmentDistanceSqr(enemy.Position, from, to, stepLength) > reach * reach) continue;
@@ -227,17 +261,12 @@ namespace Game.Systems.Weapons
                 EnemyModel enemy = enemies.Get(enemySlot);
                 if (enemy == null || !enemy.IsAlive || enemy.IsDead) continue;
 
-                _hitStamp[enemySlot] = slot.Stamp;
-                DamageResult result = WeaponDamage.ApplyToEnemy(enemy, slot.Damage, _rng.Next01());
-                slot.RemainingHits--;
+                _hitStamp[enemy.Id.Value] = slot.Stamp;
 
-                // 只在真扣到血时发：闪避、无敌帧这种"打到了但没扣"不该让受击表现亮一下。
+                // 只在真扣到血时发事件：闪避、无敌帧这种“打到了但没扣”不该让受击表现亮一下。
                 // 死亡事件不在这里发：存活标记与清理归外部的清理阶段，发在这里就成了隐式时序。
-                if (result.Applied > 0f)
-                {
-                    _events?.Publish(new UnitDamaged(EnemySystem.UnitIdOf(enemySlot), slot.Damage.Source,
-                        result.Applied, slot.Damage.IsCrit, result.RemainingHp));
-                }
+                WeaponDamage.ApplyAndPublish(_events, enemy, slot.Damage, _rng.Next01());
+                slot.RemainingHits--;
             }
         }
 
@@ -275,7 +304,9 @@ namespace Game.Systems.Weapons
 
         void EnsureStampCapacity(EnemySystem enemies)
         {
-            int needed = enemies.SlotCapacity;
+            // 按稳定 ID 的上界扩容，而不是按槽位容量。敌人数量少但 ID 可能因为
+            // 槽位复用而继续增长；数组多留一点比每次命中去 Dictionary 查更稳。
+            int needed = Mathf.Max(enemies.SlotCapacity, enemies.MaxUnitIdValue + 1);
             if (_hitStamp.Length >= needed) return;
 
             int size = _hitStamp.Length;

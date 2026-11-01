@@ -83,10 +83,7 @@ namespace Game.Systems.Weapons
             // 以后加列时只改这里的入参来源，行为类不用动。
             DamageType type = DamageType.Physical;
 
-            DamageFlags flags = DamageFlags.Dodgeable | DamageFlags.TriggerHit;
-            if (isCrit || amount >= HitFeedback.BigHitThreshold) flags |= DamageFlags.ShowNumber;
-
-            return new DamageInfo(amount, type, source, direction, knockback, isCrit, flags);
+            return new DamageInfo(amount, type, source, direction, knockback, isCrit, DamageFlags.Dodgeable);
         }
 
         /// <summary>
@@ -111,6 +108,28 @@ namespace Game.Systems.Weapons
                 enemy.LastDamageSource = damage.Source;
                 ApplyKnockback(enemy, damage);
             }
+            return result;
+        }
+
+        /// <summary>
+        /// 套用一次命中，并在真的扣到血时发布 UnitDamaged。近战、远程投射物、buff 的连锁/范围伤害
+        /// 都走这一个入口："ApplyToEnemy → Applied &gt; 0 → Publish" 的模板只留一份，
+        /// 受击表现的触发条件（闪避/无敌帧不亮）不会在某条路径上漏掉。
+        ///
+        /// 各调用方的差异仍然由参数决定，这里不统一它们：
+        ///   - dodgeRoll 由调用方用自己那条随机流掷好（随机流归调用方管，DamageResolver 不掷骰）；
+        ///   - 暴击在 DamageInfo 里已经定好，本方法只负责把它原样转进事件；
+        ///   - fromEffect 标记 buff 连锁产生的伤害，BuffSystem 不再对它二次触发。
+        /// </summary>
+        public static DamageResult ApplyAndPublish(IEventBus events, EnemyModel enemy, in DamageInfo damage,
+            float dodgeRoll, bool fromEffect = false)
+        {
+            DamageResult result = ApplyToEnemy(enemy, damage, dodgeRoll);
+            if (result.Applied <= 0f) return result;
+
+            // 目标用模型自己的稳定 Id，不用槽位号：槽位会被复用，订阅方按 ID 对齐实体
+            events?.Publish(new UnitDamaged(enemy.Id, damage.Source, result.Applied, damage.IsCrit,
+                result.RemainingHp, fromEffect));
             return result;
         }
 

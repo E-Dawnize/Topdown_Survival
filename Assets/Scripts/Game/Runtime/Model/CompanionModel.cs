@@ -11,8 +11,9 @@ namespace Game.Model
     /// 所以"买第二次、第三次"不会把历史等级叠成几条互相加成的修正。
     /// 羁绊加成也写进同一份 StatBlock，但 Source 是羁绊自己的源对象，清羁绊时不会碰等级修正。
     ///
-    /// 旅伴当前不受伤：I2 这一阶段敌人只对玩家结算接触伤害，旅伴既不被敌人推也不掉血，
-    /// HP 与 MaxHP 先按 CompanionDef.MaxHP 准备好，接敌人对旅伴的伤害时直接用。
+    /// 旅伴当前不受伤：I2 这一阶段敌人只对玩家结算接触伤害，旅伴既不被敌人推也不掉血。
+    /// 所以这里不存 HP / IsAlive：没人读的状态不为未来预留，等真的要接敌人对旅伴的伤害时再加字段，
+    /// 同时把 CompanionDef.MaxHP 作为基线写进 StatBlock（玩偶羁绊按百分比改它）。
     /// </summary>
     public sealed class CompanionModel
     {
@@ -20,7 +21,7 @@ namespace Game.Model
         public const int MaxLevel = 3;
 
         /// <summary>每级伤害 +40%（GDD 7.3）。攻击力在 StatBlock 里的值本身就是加成比例，所以按百分点平加。</summary>
-        const float DamagePerLevel = 0.4f;
+        public const float DamagePerLevel = 0.4f;
 
         /// <summary>每级间隔 −8%（GDD 7.3）。间隔 = 基础 / (1 + 攻速)，见 SetLevel 里的换算。</summary>
         const float IntervalFactorPerLevel = 0.92f;
@@ -36,17 +37,20 @@ namespace Game.Model
 
         public readonly StatBlock Stats;
 
-        /// <summary>队伍槽位（0..MaxCompanions-1）。环绕角度与 UnitId 都按它算，所以旅伴离队后槽位可以被下一个复用。</summary>
+        /// <summary>队伍槽位（0..MaxCompanions-1）。环绕角度按它算，离队后槽位可以被下一个复用；UnitId 不跟槽位绑定。</summary>
         public readonly int Slot;
 
-        /// <summary>旅伴自己的 id。与玩家（1）和敌人（槽位号 + 1）都不重叠，见 CompanionSystem.UnitIdOf。</summary>
+        /// <summary>旅伴自己的稳定 id，由本局 UnitIdAllocator 分配；与玩家、敌人不会撞号，也不随槽位复用。</summary>
         public readonly UnitId UnitId;
 
         public Vector2 Position;
         public Vector2 PrevPosition;
 
-        /// <summary>当前血量。旅伴这一阶段不会掉血，字段先备好，等敌人能打旅伴时再接。</summary>
-        public float HP;
+        /// <summary>
+        /// 阻尼跟随的内部速度。只给 CompanionSystem 的 SmoothDamp 用，渲染层不读；
+        /// 瞬移回位时必须清掉，否则下一帧会带着旧速度冲出去。
+        /// </summary>
+        public Vector2 Velocity;
 
         /// <summary>1..MaxLevel。重复购买一次 +1，到 MaxLevel 后不能再买。</summary>
         public int Level { get; private set; }
@@ -69,7 +73,6 @@ namespace Game.Model
             Stats.SetBase(StatType.CritChance, DefaultCritChance);
             Stats.SetBase(StatType.CritDamage, DefaultCritDamage);
 
-            HP = def.MaxHP;
             SetLevel(1);
         }
 
@@ -80,9 +83,7 @@ namespace Game.Model
 
         public float MoveSpeed => Stats[StatType.MoveSpeed];
 
-        public bool IsAlive => HP > 0f;
-
-        /// <summary>能否再买一次。满级后商店里的这一格就不能买了。</summary>
+        /// <summary>能否再买一次。满级后构筑卡池里的这张卡就不能再拿了。</summary>
         public bool CanLevelUp => Level < MaxLevel;
 
         /// <summary>

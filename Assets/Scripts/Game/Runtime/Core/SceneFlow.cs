@@ -14,12 +14,15 @@ namespace Game.Core
 
         /// <summary>回主菜单。</summary>
         void LoadMainMenu();
+
+        /// <summary>从主菜单进入一局。</summary>
+        void LoadRun();
     }
 
     /// <summary>
     /// 用 SceneManager 实现的场景切换。
     ///
-    /// 重开一局走场景重载而不是手工清场：玩家、敌人、掉落物、三套视图池、HUD、商店面板全都挂在场景上，
+    /// 重开一局走场景重载而不是手工清场：玩家、敌人、掉落物、三套视图池、HUD、升级/结算面板全都挂在场景上，
     /// 重载一次等于把它们连同事件总线一起丢掉重来，比"逐个 Reset 每个系统"少一整套可能漏项的代码。
     /// AppRoot 在 OnDestroy 里把事件总线 Clear 掉、把 Instance 置空，新场景的装配根因此不会被误判成重复。
     ///
@@ -51,6 +54,11 @@ namespace Game.Core
         public void LoadMainMenu()
         {
             SceneManager.LoadScene(MainMenuScene);
+        }
+
+        public void LoadRun()
+        {
+            SceneManager.LoadScene(RunScene);
         }
     }
 }

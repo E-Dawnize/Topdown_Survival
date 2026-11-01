@@ -5,11 +5,17 @@ namespace Game.Core.Events
 {
     public sealed class EventBus : IEventBus
     {
-        const int MaxFlushSteps = 10000;
+        readonly int _maxFlushSteps;
 
         readonly Dictionary<Type, IEventChannel> _channels = new Dictionary<Type, IEventChannel>(32);
         readonly List<IEventChannel> _pending = new List<IEventChannel>(16);
         bool _isFlushing;
+
+        public EventBus(int maxFlushSteps = 10000)
+        {
+            if (maxFlushSteps < 1) throw new ArgumentOutOfRangeException(nameof(maxFlushSteps));
+            _maxFlushSteps = maxFlushSteps;
+        }
 
         public int SubscriptionCount { get; private set; }
 
@@ -48,7 +54,10 @@ namespace Game.Core.Events
             if (!channel.HasPending)
             {
                 channel.HasPending = true;
-                _pending.Add(channel);
+
+                // 频道可能已经在 _pending 里但本轮已经分发完（HasPending=false）。
+                // 这时只把它重新标脏，不能再加一条，否则同一频道会被重复调度。
+                if (!_pending.Contains(channel)) _pending.Add(channel);
             }
         }
 
@@ -63,17 +72,40 @@ namespace Game.Core.Events
             try
             {
                 int guard = 0;
-                // 处理过程中 handler 可能继续 Publish，Count 会被撑大，这里就是要跟着处理
-                for (int i = 0; i < _pending.Count; i++)
+
+                // 每一轮只处理各频道“本轮开始时”的事件。handler 新发布的事件会留在队列里，
+                // 由下一轮处理；guard 因此能看见同类型自触发，并在预算耗尽时中止，而不是卡死。
+                while (true)
                 {
-                    if (++guard > MaxFlushSteps)
+                    bool anyPending = false;
+
+                    for (int i = 0; i < _pending.Count; i++)
                     {
-                        throw new InvalidOperationException("事件分发超过上限，可能是事件互相触发形成了循环");
+                        IEventChannel channel = _pending[i];
+                        if (!channel.HasPending) continue;
+
+                        anyPending = true;
+                        if (++guard > _maxFlushSteps)
+                        {
+                            throw new InvalidOperationException(
+                                "事件分发超过上限，可能是事件互相触发形成了循环");
+                        }
+
+                        // 分发期间保持 HasPending=true：handler 里 Publish 同一个频道时，
+                        // Publish 不会把这个频道重复加进 _pending。等分发完再按队列余量决定。
+                        try
+                        {
+                            channel.HasPending = channel.DispatchPending();
+                        }
+                        catch
+                        {
+                            // 非 handler 异常（例如扩容失败）时保留队列，下一次 Flush 还能重试。
+                            channel.HasPending = channel.HasQueued;
+                            throw;
+                        }
                     }
 
-                    IEventChannel channel = _pending[i];
-                    channel.HasPending = false;
-                    channel.DispatchPending();
+                    if (!anyPending) break;
                 }
 
                 _pending.Clear();

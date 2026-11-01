@@ -35,11 +35,11 @@ namespace Game.Core
         }
 
         /// <summary>
-        /// 推进一个渲染帧，返回本帧要跑的固定步数。
-        /// 定格期间返回 0 且不累积：暂停掉的那段真实时间不补跑，
-        /// 恢复后的第一帧最多走正常的两步（余量 + 一帧时间），不会看到"卡一下再瞬移"。
+        /// 开始一个渲染帧：更新定格与累加器，返回本帧最多可以执行几步。
+        /// 这里只报告额度，不扣累加器；真正执行一步时由 TryConsumeStep 扣除。
+        /// 这样主循环中途因定格退出时，未执行的步数仍然留在累加器里，不会凭空丢掉。
         /// </summary>
-        public int Advance(float realDelta)
+        public int BeginFrame(float realDelta)
         {
             if (_hitStop > 0f)
             {
@@ -54,12 +54,25 @@ namespace Game.Core
             }
 
             int steps = 0;
-            while (_accumulator >= FixedStep && steps < MaxStepsPerFrame)
+            float remaining = _accumulator;
+            while (remaining >= FixedStep && steps < MaxStepsPerFrame)
             {
-                _accumulator -= FixedStep;
+                remaining -= FixedStep;
                 steps++;
             }
             return steps;
+        }
+
+        /// <summary>
+        /// 提交一个固定步。返回 false 表示当前不该再跑：可能累加器不够，
+        /// 也可能上一步命中刚刚请求了定格。只有返回 true 时累加器才会被扣除。
+        /// </summary>
+        public bool TryConsumeStep()
+        {
+            if (_hitStop > 0f || _accumulator < FixedStep) return false;
+
+            _accumulator -= FixedStep;
+            return true;
         }
     }
 }

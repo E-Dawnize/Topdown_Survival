@@ -1,6 +1,7 @@
 using System;
 using Game.Config;
 using Game.Core.Events;
+using Game.Model;
 using UnityEngine;
 
 namespace Game.Systems
@@ -14,11 +15,6 @@ namespace Game.Systems
         /// <summary>可以被闪避。环境伤害、DoT 一般不带这一位。</summary>
         Dodgeable = 1 << 0,
 
-        /// <summary>触发受击硬直与受击表现。</summary>
-        TriggerHit = 1 << 1,
-
-        /// <summary>显示伤害数字。默认只在暴击或大伤害时置位。</summary>
-        ShowNumber = 1 << 2
     }
 
     /// <summary>

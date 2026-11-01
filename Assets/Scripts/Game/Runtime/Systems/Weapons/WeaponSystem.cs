@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Game.Config;
 using Game.Core.Events;
+using Game.Model;
 using UnityEngine;
 
 namespace Game.Systems.Weapons
@@ -28,14 +29,16 @@ namespace Game.Systems.Weapons
         readonly IEventBus _events;
 
         readonly List<WeaponModel> _weapons = new List<WeaponModel>(4);
+        readonly WeaponUpgradeRules _rules;
 
         public WeaponSystem(EnemySystem enemies, IRandom01 rng, UnitId shooter, int projectileCapacity = 256,
-            IEventBus events = null)
+            IEventBus events = null, WeaponUpgradeRules rules = null)
         {
             _enemies = enemies ?? throw new ArgumentNullException(nameof(enemies));
             _rng = rng ?? throw new ArgumentNullException(nameof(rng));
             _events = events;
             Shooter = shooter;
+            _rules = rules ?? WeaponUpgradeRules.Default;
             Projectiles = new ProjectileSystem(rng, projectileCapacity, events);
         }
 
@@ -46,15 +49,42 @@ namespace Game.Systems.Weapons
 
         public IReadOnlyList<WeaponModel> Weapons => _weapons;
 
+        public int Count => _weapons.Count;
+
+        public WeaponUpgradeRules Rules => _rules;
+
+        /// <summary>按 Id 找已经持有的武器。没有返回 null。</summary>
+        public WeaponModel Find(string weaponId)
+        {
+            if (string.IsNullOrEmpty(weaponId)) return null;
+            for (int i = 0; i < _weapons.Count; i++)
+            {
+                if (_weapons[i].Id == weaponId) return _weapons[i];
+            }
+            return null;
+        }
+
+        public bool HasWeapon(string weaponId) => Find(weaponId) != null;
+
         /// <summary>按表加一件武器。BehaviourType 未知或与 Kind 冲突会抛 ArgumentException。</summary>
         public WeaponModel AddWeapon(WeaponDef def)
         {
             if (def == null) throw new ArgumentNullException(nameof(def));
 
             IWeaponBehaviour behaviour = CreateBehaviour(def);
-            var weapon = new WeaponModel(def, behaviour);
+            var weapon = new WeaponModel(def, behaviour, _rules);
             _weapons.Add(weapon);
             return weapon;
+        }
+
+        /// <summary>
+        /// 换局清空。正式重开是场景重载，这里给同一进程里的调试重开与测试兜底：
+        /// 不清武器列表，新一轮会带着上一轮的武器继续打，伤害会凭空翻倍。
+        /// </summary>
+        public void ResetForNewRun()
+        {
+            _weapons.Clear();
+            Projectiles.Clear();
         }
 
         /// <summary>每步推进一次：投射物先走完这一段，再让各件武器决定开不开火。</summary>

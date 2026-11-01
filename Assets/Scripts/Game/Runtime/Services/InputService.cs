@@ -15,20 +15,16 @@ namespace Game.Services
         InputActionMap _uiMap;
         InputAction _move;
         InputAction _dash;
-        InputAction _skill;
-        InputAction _aim;
-        InputAction _pause;
         InputAction _uiNavigate;
         InputAction _uiSubmit;
         InputAction _uiCancel;
         InputAction _uiRefresh;
 
+        readonly InputBuffer _buffer = new InputBuffer();
+
         public InputSnapshot Last { get; private set; }
         public Vector2 MoveAxis => Last.Move;
-        public Vector2 AimScreenPosition => Last.Aim;
         public bool DashPressed => Last.DashPressed;
-        public bool SkillPressed => Last.SkillPressed;
-        public bool PausePressed => Last.PausePressed;
         public bool UiMode { get; private set; }
 
         /// <summary>
@@ -51,13 +47,18 @@ namespace Game.Services
 
         void OnEnable()
         {
-            _playerMap?.Enable();
+            // 按当前模式恢复，而不是无条件开 Player Map。
+            // 升级/结算面板打开时根对象被禁用再启用，UiMode 仍然是 true，
+            // 这里必须恢复 UI Map，否则面板可见但按键没反应。
+            ApplyMapState();
         }
 
         void OnDisable()
         {
             _playerMap?.Disable();
             _uiMap?.Disable();
+            _buffer.Clear();
+            Last = default;
         }
 
         void OnDestroy()
@@ -70,31 +71,47 @@ namespace Game.Services
             }
         }
 
-        /// <summary>RunLoop 每帧调一次，返回本帧快照。</summary>
+        /// <summary>RunLoop 每帧调一次。边沿按钮进入缓冲，零步帧不会把它们清掉。</summary>
         public InputSnapshot Sample()
         {
-            if (_move == null) return Last;
+            if (_move == null) return _buffer.Current;
 
-            Last = new InputSnapshot
+            var edges = new InputSnapshot
             {
                 Move = _move.ReadValue<Vector2>(),
-                Aim = _aim.ReadValue<Vector2>(),
                 DashPressed = _dash.WasPressedThisFrame(),
-                SkillPressed = _skill.WasPressedThisFrame(),
-                PausePressed = _pause.WasPressedThisFrame(),
             };
+
+            Last = _buffer.Capture(edges);
             return Last;
+        }
+
+        /// <summary>一个模拟步已经消费过按钮边沿，清掉锁存；零步帧不要调用。</summary>
+        public void ConsumeSimulationStep()
+        {
+            _buffer.ConsumeSimulationStep();
+            Last = _buffer.Current;
         }
 
         /// <summary>
         /// 在 Player 与 UI 两套 Map 之间切。同一时刻只启用一套：
-        /// 商店开着还让 Player Map 活着的话，玩家会在买入的同一帧按出一次冲刺。
+        /// 升级面板开着还让 Player Map 活着的话，玩家会在选卡的同一帧按出一次冲刺。
+        /// 切换时清掉旧模式下的按钮锁存，避免关面板后的下一步补触发一次冲刺。
         /// </summary>
         public void SetUiMode(bool uiMode)
         {
             if (UiMode == uiMode) return;
             UiMode = uiMode;
-            if (uiMode)
+            _buffer.ConsumeSimulationStep();
+            Last = _buffer.Current;
+            ApplyMapState();
+        }
+
+        void ApplyMapState()
+        {
+            if (_playerMap == null || _uiMap == null) return;
+
+            if (UiMode)
             {
                 _playerMap.Disable();
                 _uiMap.Enable();
@@ -124,18 +141,11 @@ namespace Game.Services
             _dash = _playerMap.AddAction("Dash", InputActionType.Button, "<Keyboard>/space");
             _dash.AddBinding("<Gamepad>/buttonSouth");
 
-            _skill = _playerMap.AddAction("Skill", InputActionType.Button, "<Keyboard>/e");
-            _skill.AddBinding("<Gamepad>/rightShoulder");
 
-            _aim = _playerMap.AddAction("Aim", InputActionType.Value, expectedControlLayout: "Vector2");
-            _aim.AddBinding("<Mouse>/position");
-            _aim.AddBinding("<Gamepad>/rightStick");
 
-            _pause = _playerMap.AddAction("Pause", InputActionType.Button, "<Keyboard>/escape");
-            _pause.AddBinding("<Gamepad>/start");
 
-            // 商店 UI 是自建的键盘/手柄界面（见 ShopView），不接 EventSystem 与 InputSystemUIInputModule，
-            // 所以这里只放商店真正用到的四个动作。导航同时绑方向键与 WASD：
+            // 升级/结算 UI 是自建的键盘/手柄界面（见 UpgradeView / ResultView），不接 EventSystem。
+            // 这里只放面板真正用到的四个动作。导航同时绑方向键与 WASD：
             // 键位与 Player Map 的移动键一致，玩家不用在两套键位之间换手指。
             _uiMap = _asset.AddActionMap("UI");
 

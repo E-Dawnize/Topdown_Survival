@@ -9,37 +9,29 @@ using UnityEngine;
 namespace Game.Systems
 {
     /// <summary>
-    /// 旅伴（I2-6）与阵营羁绊（I2-7）。两部分放在一起，是因为羁绊的唯一输入就是这支队伍本身：
-    /// 招进 / 失去一个旅伴的同一步里必须重算羁绊，拆成两个类以后"谁负责在队伍变化后重算"就没有答案了。
+    /// 旅伴门面：花名册 + 阵营羁绊 + 招募/离队，并把每步的移动与开火转给两个内部部件：
+    ///   - <see cref="CompanionMovement"/>：跟随/接敌移动、瞬移回位、两两分离；
+    ///   - <see cref="CompanionArmory"/>：每个槽位一套 WeaponSystem 的装配与开火。
     ///
-    /// 跟随规则（GDD 7 / 17：不做寻路，只用"跟随玩家 + 距离弹性"）：
-    ///   - 每个旅伴有一个固定的环绕位（槽位号 × 90°），目标点 = 玩家位置 + 单位方向 × FollowRadius；
-    ///   - 每步按自己的移速朝目标点直线移动，没有寻路、没有避障；
-    ///   - 离玩家超过 4 米直接瞬移回目标点（ITERATION_PLAN I2-6 的验收口径），
-    ///     这样玩家用冲刺或加速道具拉开距离时旅伴不会永远挂在后面。
+    /// 花名册与羁绊留在一起，是因为羁绊的唯一输入就是这支队伍：招进 / 失去一个旅伴的同一步里必须重算羁绊，
+    /// 拆成两个类以后"谁负责在队伍变化后重算"就没有答案了。Recruit / Remove 是唯一的重算触发点，
+    /// 外部不需要（也不应该）在改队伍后自己补一次 RecomputeBonds。
     ///
-    /// 为什么选固定角度环绕而不是敌人那套邻格分离力：
-    ///   旅伴最多 4 个，90° 一格的位置本身就是互不重叠的（相邻两格的间距 = √(r1² + r2²) ≥ √2 × MinRingRadius），
-    ///   不需要空间索引，也不需要每步查邻居。敌人那套是为"几十上百个、没有天然位置"的群体准备的，
-    ///   搬过来要给旅伴再建一张网格（敌人网格的槽位是敌人的，混用会让敌人的分离力把旅伴算进去）。
-    ///   环形位置负责稳态，另外加一道 O(n²)、n ≤ 4 的两两位置松解，负责追赶途中与瞬移瞬间不叠在一起。
-    ///
-    /// 旅伴不参与敌人的分离力，也不会被敌人推着走：敌人系统只改 EnemyModel，从不读写 CompanionModel，
-    /// 旅伴的位置每步只由"环绕目标 + 自己的移速 + 两两松解"决定。敌人也不会攻击旅伴（接触伤害只对玩家结算）。
-    ///
-    /// 武器：每个旅伴一个 WeaponSystem 实例，Shooter 是旅伴自己的 UnitId（见 UnitIdOf）。
-    /// 所以伤害、受击反馈与击杀归属记在旅伴头上，不会算成玩家的输出。
-    /// 开火在同一步里跟在玩家开火之后（RunSimulation 第 5 步），不开线程也不用协程。
+    /// 行为规则（GDD 8）见 <see cref="CompanionMovement"/>；武器归属见 <see cref="CompanionArmory"/>。
+    /// 主循环顺序：TickMovement 在玩家移动之后、敌人移动之前；TickWeapons 在玩家开火之后、清理敌人之前。
     /// </summary>
     public sealed class CompanionSystem
     {
-        /// <summary>GDD 7：一局最多同时拥有 4 个。它同时也正好是 4 件羁绊的上限，两个规则用同一个数。</summary>
-        public const int MaxCompanions = CompanionBonds.SecondTierCount;
+        /// <summary>
+        /// GDD 7：一局最多同时拥有 4 个。它与羁绊二级阈值（4 件）当前数值相同，但那是两条独立规则：
+        /// 队伍上限改这里，羁绊阈值在 CompanionBonds.SecondTierCount，两边不互相绑定。
+        /// </summary>
+        public const int MaxCompanions = 4;
 
         /// <summary>
-        /// 旅伴 UnitId 的起点。敌人用"槽位号 + 1"、玩家固定 1（AppRoot.PlayerUnit），
-        /// 三者共用同一个小整数空间；旅伴把自己放在 1000 之后，UnitDamaged / UnitDied 里才能一眼分出
-        /// "这一下是谁打的、这只怪是谁杀的"。同屏敌人上限是 200（I1-11），离 1000 还很远。
+        /// 旅伴默认 ID 起点。正式装配由 AppRoot 传入与 EnemySystem 共用的 UnitIdAllocator，
+        /// 这里只给单独构造 CompanionSystem 的测试一个不与敌人（从 2 开始）撞号的起点。
+        /// 旅伴不用"基址 + 槽位"编码，槽位复用不会复用 UnitId。
         /// </summary>
         public const int UnitIdBase = 1000;
 
@@ -47,8 +39,8 @@ namespace Game.Systems
         public const float TeleportDistance = 4f;
 
         /// <summary>
-        /// 旅伴的身体半径。表里没有这个字段（Companion.json 只有 FollowRadius 与 MaxHP），
-        /// 取与敌人占位身体同量级的 0.35：验收口径"4 个旅伴的最小间距大于身体直径"按 0.7 米算。
+        /// 旅伴的身体半径。Companion 表没有这个字段，取与敌人占位身体同量级的 0.35：
+        /// 验收口径"4 个旅伴的最小间距大于身体直径"按 0.7 米算。
         /// </summary>
         public const float BodyRadius = 0.35f;
 
@@ -69,17 +61,23 @@ namespace Game.Systems
         /// </summary>
         public const float FollowSpeed = 6f;
 
+        /// <summary>
+        /// 跟随阻尼（SmoothDamp 的 smoothTime，秒）。0.22 在 5 米/秒时约落后 1 米，
+        /// 起步/停下能看出拖尾，但不会掉出 4 米瞬移阈值。
+        /// </summary>
+        public const float FollowSmoothTime = 0.22f;
+
+        /// <summary>
+        /// Follow 模式的目标点相对玩家往速度反方向偏的秒数。玩家匀速跑时整队会略微拖在后面，
+        /// 不是四个点焊死在玩家身上；只影响 Follow，Aggro/Kiter/Guard 的接敌仍然即时。
+        /// </summary>
+        public const float FollowTrailTime = 0.10f;
+
         /// <summary>每个旅伴自己的投射物池容量。旅伴的弹道不共用玩家的池，池爆掉不会互相拖累。</summary>
         public const int ProjectileCapacity = 256;
 
         /// <summary>阵营枚举的成员数。0 是 None（不算羁绊），其余下标与 CompanionFaction 一一对应。</summary>
         static readonly int FactionCount = Enum.GetValues(typeof(CompanionFaction)).Length;
-
-        /// <summary>两两重合时（理论上瞬移后才可能）取固定方向散开用的黄金角，与 EnemySystem 同一个值。</summary>
-        const float GoldenAngle = 2.39996323f;
-
-        /// <summary>索敌扫描的兜底半径：武器 Range 填了 0 或负数时，至少给朝向一个有意义的方向来源。</summary>
-        const float MinAimRadius = 1f;
 
         /// <summary>羁绊源的身份。Source 靠引用相等批量移除，所以一条羁绊每次生效都要有自己的实例。</summary>
         sealed class BondSource
@@ -94,14 +92,14 @@ namespace Game.Systems
 
         readonly PlayerModel _player;
         readonly EnemySystem _enemies;
-        readonly IRandom01 _rng;
         readonly IReadOnlyDictionary<string, WeaponDef> _weaponTable;
-        readonly IEventBus _events;
 
-        // 槽位与队伍两条索引：槽位号是固定的（决定环绕角度与 UnitId），_roster 只放还活着的那几个，
-        // 重算羁绊与按购买顺序遍历都用它，省掉每步扫空槽位。
+        /// <summary>稳定实体 ID 分配器。正式装配与 EnemySystem 共用同一个实例。</summary>
+        readonly UnitIdAllocator _ids;
+
+        // 槽位与队伍两条索引：槽位号是固定的（决定环绕角度与武器绑定），_roster 只放还在队里的那几个，
+        // 重算羁绊与按购买顺序遍历都用它，省掉每步扫空槽位。UnitId 按招募顺序分配，不跟槽位绑定。
         readonly CompanionModel[] _slots = new CompanionModel[MaxCompanions];
-        readonly WeaponSystem[] _weaponSystems = new WeaponSystem[MaxCompanions];
         readonly List<CompanionModel> _roster = new List<CompanionModel>(MaxCompanions);
 
         // 羁绊状态。_bondSources 按阵营下标存当前生效的源对象，重算时按它逐条回滚。
@@ -109,17 +107,31 @@ namespace Game.Systems
         readonly int[] _factionCounts = new int[FactionCount];
         readonly List<ActiveBond> _activeBonds = new List<ActiveBond>(FactionCount);
 
-        // 每步索敌结果复用同一个容器：这条路径每 tick 调"旅伴数"次，自己 new 就是稳定 GC
-        readonly List<int> _targets = new List<int>(16);
+        readonly CompanionMovement _movement;
+        readonly CompanionArmory _armory;
 
         public CompanionSystem(PlayerModel player, EnemySystem enemies, IReadOnlyDictionary<string, WeaponDef> weapons,
-            IRandom01 rng, IEventBus events = null)
+            IRandom01 rng, IEventBus events = null, UnitIdAllocator ids = null)
         {
             _player = player ?? throw new ArgumentNullException(nameof(player));
             _enemies = enemies ?? throw new ArgumentNullException(nameof(enemies));
             _weaponTable = weapons ?? throw new ArgumentNullException(nameof(weapons));
-            _rng = rng ?? throw new ArgumentNullException(nameof(rng));
-            _events = events;
+            _ids = ids ?? new UnitIdAllocator(UnitIdBase);
+
+            _movement = new CompanionMovement(_slots, _player, _enemies);
+            _armory = new CompanionArmory(_slots, _enemies, rng, events);
+        }
+
+        /// <summary>
+        /// 兼容旧装配点的重载。旅伴在本阶段没有武器成长：升级走 CompanionModel 的属性修正，
+        /// WeaponModel 永远停在 1 级，因此 WeaponUpgradeRules 对旅伴武器的数值是恒等变换、没有任何可观察效果。
+        /// 这份规则被显式忽略（不悄悄给旅伴加武器成长），保留参数只为不改动 AppRoot 等既有调用点；
+        /// 以后真要做旅伴武器升级时，应该在这里接上，而不是让调用方以为已经生效。
+        /// </summary>
+        public CompanionSystem(PlayerModel player, EnemySystem enemies, IReadOnlyDictionary<string, WeaponDef> weapons,
+            IRandom01 rng, IEventBus events, UnitIdAllocator ids, WeaponUpgradeRules weaponRules)
+            : this(player, enemies, weapons, rng, events, ids)
+        {
         }
 
         /// <summary>按槽位号从小到大排列的槽位数组长度（= 队伍上限）。视图层同步时可以拿它当上界。</summary>
@@ -133,14 +145,25 @@ namespace Game.Systems
         /// <summary>当前生效的羁绊，按 CompanionFaction 的枚举顺序。空列表表示一条都没触发。</summary>
         public IReadOnlyList<ActiveBond> ActiveBonds => _activeBonds;
 
-        /// <summary>旅伴槽位号到 UnitId 的唯一换算，与 EnemySystem.UnitIdOf 同一个思路。</summary>
-        public static UnitId UnitIdOf(int slot) => new UnitId(UnitIdBase + slot + 1);
-
-        /// <summary>反向换算：这个 UnitId 是不是旅伴，以及是哪个槽位。不是旅伴返回 -1。</summary>
-        public static int SlotOf(UnitId id)
+        /// <summary>当前槽位对应的稳定 UnitId。槽位空时返回 None。</summary>
+        public UnitId UnitIdOf(int slot)
         {
-            int slot = id.Value - UnitIdBase - 1;
-            return slot >= 0 && slot < MaxCompanions ? slot : -1;
+            CompanionModel companion = Get(slot);
+            return companion != null ? companion.UnitId : UnitId.None;
+        }
+
+        /// <summary>按稳定 ID 找回旅伴槽位。不是旅伴或已经离队返回 -1。</summary>
+        public int SlotOf(UnitId id)
+        {
+            if (!id.IsValid) return -1;
+
+            for (int slot = 0; slot < _slots.Length; slot++)
+            {
+                CompanionModel companion = _slots[slot];
+                if (companion != null && companion.UnitId == id) return slot;
+            }
+
+            return -1;
         }
 
         public CompanionModel Get(int slot)
@@ -149,10 +172,7 @@ namespace Game.Systems
         }
 
         /// <summary>正拿着这把武器的那套武器系统。每个旅伴一套，Shooter 是旅伴自己的 UnitId。</summary>
-        public WeaponSystem WeaponsOf(int slot)
-        {
-            return slot >= 0 && slot < _weaponSystems.Length ? _weaponSystems[slot] : null;
-        }
+        public WeaponSystem WeaponsOf(int slot) => _armory.WeaponsOf(slot);
 
         /// <summary>队伍里某个旅伴的等级，没有这个旅伴返回 0。</summary>
         public int LevelOf(string companionId)
@@ -163,7 +183,7 @@ namespace Game.Systems
 
         /// <summary>
         /// 现在能不能再招这个旅伴：已有的看等级（满级买不了），没有的看队伍有没有满。
-        /// 商店的 CanBuy 与 TryBuy 共用这一条判据，界面上"看着能买、按下去没反应"就不会出现。
+        /// 构筑抽卡的 IsEligible 与生效路径共用这一条判据，界面上"看着能拿、按下去没反应"就不会出现。
         /// </summary>
         public bool CanRecruit(CompanionDef def)
         {
@@ -198,19 +218,17 @@ namespace Game.Systems
             if (slot < 0) return null;
 
             WeaponDef weapon = ResolveWeapon(def);
+            UnitId unitId = _ids.Allocate(UnitKind.Companion);
 
             // Shooter 用旅伴自己的 UnitId：这条武器系统打出去的伤害、发的受击事件都记在旅伴头上
-            var weapons = new WeaponSystem(_enemies, _rng, UnitIdOf(slot), ProjectileCapacity, _events);
-            weapons.AddWeapon(weapon);
+            _armory.Equip(slot, weapon, unitId);
 
-            var model = new CompanionModel(def, weapon, slot, UnitIdOf(slot), FollowSpeed);
+            var model = new CompanionModel(def, weapon, slot, unitId, FollowSpeed);
 
             // 出生就站在环绕位上：否则第一个模拟步会从原点滑过来，看起来像"刚被召唤出来"
-            model.Position = RingTarget(_player.Position, slot, def.FollowRadius);
-            model.PrevPosition = model.Position;
+            _movement.PlaceOnRing(model, _player.Position);
 
             _slots[slot] = model;
-            _weaponSystems[slot] = weapons;
             _roster.Add(model);
 
             // 队伍变了：先让新旅伴吃到已有的羁绊，再看这一手有没有凑出新的羁绊
@@ -228,7 +246,7 @@ namespace Game.Systems
             if (model == null) return false;
 
             _slots[slot] = null;
-            _weaponSystems[slot] = null;
+            _armory.Unequip(slot);
             _roster.Remove(model);
 
             RecomputeBonds();
@@ -285,12 +303,9 @@ namespace Game.Systems
         /// </summary>
         public void ResetForNewRun()
         {
-            for (int i = 0; i < _slots.Length; i++)
-            {
-                _slots[i] = null;
-                _weaponSystems[i] = null;
-            }
+            for (int i = 0; i < _slots.Length; i++) _slots[i] = null;
 
+            _armory.Clear();
             _roster.Clear();
             RecomputeBonds();
         }
@@ -300,144 +315,14 @@ namespace Game.Systems
         /// 旅伴追的是玩家本步的新位置，而敌人的追击与分离力完全不看旅伴，先后都不影响它们。
         /// 稳态不分配：只读模型、写模型，外加一个长度 ≤ 4 的两两松解。
         /// </summary>
-        public void TickMovement(Vector2 playerPos, float dt)
-        {
-            for (int slot = 0; slot < _slots.Length; slot++)
-            {
-                CompanionModel companion = _slots[slot];
-                if (companion == null) continue;
-
-                Vector2 target = RingTarget(playerPos, slot, companion.Def.FollowRadius);
-
-                if ((playerPos - companion.Position).sqrMagnitude > TeleportDistance * TeleportDistance)
-                {
-                    // 超过 4 米就不跑了，直接回位：玩家冲刺 + 加速道具以后，靠跑是追不上的。
-                    // 两边都写目标点：渲染层在 PrevPosition 与 Position 之间插值，留着旧位置
-                    // 会把瞬移画成一条横穿战场的滑线
-                    companion.Position = target;
-                    companion.PrevPosition = target;
-                    continue;
-                }
-
-                // 正常走：移动前记一笔，渲染层拿 PrevPosition 与 Position 插值
-                companion.PrevPosition = companion.Position;
-                companion.Position = Vector2.MoveTowards(companion.Position, target, companion.MoveSpeed * dt);
-            }
-
-            ResolveOverlap();
-        }
+        public void TickMovement(Vector2 playerPos, float dt) => _movement.Tick(playerPos, dt);
 
         /// <summary>
         /// 开火。排在玩家开火之后（RunSimulation 第 5 步的末尾），前提是敌人网格已经 Rebuild 过：
         /// 旅伴的武器和玩家用的是同一个 EnemySystem 与同一份位置快照，不另开线程也不用协程。
-        /// 稳态不分配：ShooterStats 是结构体，索敌结果复用 _targets。
+        /// 稳态不分配：ShooterStats 是结构体，索敌结果由武器部件复用。
         /// </summary>
-        public void TickWeapons(Vector2 playerPos, float dt)
-        {
-            for (int slot = 0; slot < _slots.Length; slot++)
-            {
-                CompanionModel companion = _slots[slot];
-                if (companion == null) continue;
-
-                WeaponSystem weapons = _weaponSystems[slot];
-
-                // 加成从旅伴自己的 StatBlock 现读：等级修正与羁绊都写在那里面，这里不再算一遍
-                var stats = new ShooterStats(
-                    companion.Stats[StatType.Attack],
-                    companion.Stats[StatType.CritChance],
-                    companion.Stats[StatType.CritDamage],
-                    companion.Stats[StatType.AttackSpeed],
-                    Mathf.RoundToInt(companion.Stats[StatType.ProjectileCount]));
-
-                // 远程只在贴身重合时用朝向兜底，近战的扇形判定必须有朝向：一律朝射程内最近的敌人
-                Vector2 facing = FacingTowardNearest(companion, playerPos);
-
-                weapons.Tick(companion.Position, facing, stats, dt);
-            }
-        }
-
-        Vector2 RingTarget(Vector2 playerPos, int slot, float followRadius)
-        {
-            // 90° 一格：4 个旅伴正好占满四个象限，任意两个相邻槽位都差 90°，间距下界由 MinRingRadius 保证。
-            // 目标点不夹场地边界：夹了以后玩家贴着墙走时几位旅伴会被同一条边挤成一排，
-            // 而旅伴没有物理碰撞（不撞墙也不撞敌人），追出去半个身位比在墙边重叠好。
-            float angle = slot * (Mathf.PI * 0.5f);
-            float radius = followRadius > MinRingRadius ? followRadius : MinRingRadius;
-            return playerPos + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
-        }
-
-        /// <summary>
-        /// 两两位置松解。环形位置已经保证了稳态不重叠，这一道管的是追赶途中与瞬移瞬间：
-        /// 一个旅伴还在半路、另一个已经到位时，两个身体可能短暂插在一起。
-        /// 每个重叠对沿连线各让一半，n ≤ 4 所以是固定 6 次比较，比再建一张空间网格便宜得多。
-        /// </summary>
-        void ResolveOverlap()
-        {
-            float minDistance = BodyRadius * 2f * SeparationMargin;
-            float minSqr = minDistance * minDistance;
-
-            for (int i = 0; i < _slots.Length; i++)
-            {
-                CompanionModel a = _slots[i];
-                if (a == null) continue;
-
-                for (int j = i + 1; j < _slots.Length; j++)
-                {
-                    CompanionModel b = _slots[j];
-                    if (b == null) continue;
-
-                    Vector2 delta = b.Position - a.Position;
-                    float sqr = delta.sqrMagnitude;
-                    if (sqr >= minSqr) continue;
-
-                    float distance = Mathf.Sqrt(sqr);
-                    Vector2 direction = distance > 1e-4f
-                        ? delta / distance
-                        : new Vector2(Mathf.Cos((i * MaxCompanions + j) * GoldenAngle),
-                            Mathf.Sin((i * MaxCompanions + j) * GoldenAngle));   // 完全重合才走这里
-
-                    float push = (minDistance - distance) * 0.5f;   // 一人让一半
-                    a.Position -= direction * push;
-                    b.Position += direction * push;
-                }
-            }
-        }
-
-        /// <summary>
-        /// 朝射程内最近的活目标。近战的扇形判定直接拿它当方向，远程只在目标与射手重合时兜底用。
-        /// 扫不到目标时朝玩家：没有目标就没有可打的方向，这个朝向不会造成误伤。
-        /// </summary>
-        Vector2 FacingTowardNearest(CompanionModel companion, Vector2 playerPos)
-        {
-            float range = companion.Weapon.Range > MinAimRadius ? companion.Weapon.Range : MinAimRadius;
-
-            _targets.Clear();
-            _enemies.Grid.QueryCircle(companion.Position, range, _targets);
-
-            int best = -1;
-            float bestSqr = range * range;
-            for (int i = 0; i < _targets.Count; i++)
-            {
-                int slot = _targets[i];
-                EnemyModel enemy = _enemies.Get(slot);
-                if (enemy == null || !enemy.IsAlive || enemy.IsDead) continue;
-
-                float sqr = (enemy.Position - companion.Position).sqrMagnitude;
-                if (sqr > bestSqr) continue;
-                bestSqr = sqr;
-                best = slot;
-            }
-
-            if (best >= 0)
-            {
-                EnemyModel target = _enemies.Get(best);
-                Vector2 toTarget = target.Position - companion.Position;
-                if (toTarget.sqrMagnitude > 1e-8f) return toTarget.normalized;
-            }
-
-            Vector2 toPlayer = playerPos - companion.Position;
-            return toPlayer.sqrMagnitude > 1e-8f ? toPlayer.normalized : Vector2.up;
-        }
+        public void TickWeapons(Vector2 playerPos, float dt) => _armory.Tick(playerPos, dt);
 
         void RollbackBonds()
         {
