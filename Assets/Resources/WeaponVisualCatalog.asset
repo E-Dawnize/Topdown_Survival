@@ -1,0 +1,44 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b7982a26791d2bae9a77e13710af2fb0, type: 3}
+  m_Name: WeaponVisualCatalog
+  m_EditorClassIdentifier: 
+  _entries:
+  - WeaponId: Bow
+    Prefab: {fileID: 2512730821468695331, guid: b93a82697fc32944d96429b167d23765,
+      type: 3}
+    AttackStyle: 3
+    AttackDuration: 0.26
+  - WeaponId: Crossbow
+    Prefab: {fileID: 3049094856380335700, guid: 7a315de20bde724468a5b44b92f361f9,
+      type: 3}
+    AttackStyle: 4
+    AttackDuration: 0.34
+  - WeaponId: Orb
+    Prefab: {fileID: 2073251913174367307, guid: ebdc2fb1549d97a4ab7654ab350b43ec,
+      type: 3}
+    AttackStyle: 5
+    AttackDuration: 0.38
+  - WeaponId: Sword
+    Prefab: {fileID: 347768890803033012, guid: 76b3d14435e1eb447a6a266eb1b20dc7, type: 3}
+    AttackStyle: 0
+    AttackDuration: 0.32
+  - WeaponId: Dagger
+    Prefab: {fileID: 6738695656217292124, guid: 7cc43954d0f91284cac8d829264d8238,
+      type: 3}
+    AttackStyle: 1
+    AttackDuration: 0.24
+  - WeaponId: Hammer
+    Prefab: {fileID: 1864809103024043493, guid: 72e35734fab2ddf4ba6bf993e7ac63ac,
+      type: 3}
+    AttackStyle: 2
+    AttackDuration: 0.46

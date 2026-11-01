@@ -2,25 +2,79 @@
   {
     "Id": "IronBox",
     "Name": "铁盒",
+    "Description": "机械阵营，稳定远程",
     "Faction": "Machine",
     "WeaponId": "Bow",
     "FollowRadius": 1.6,
-    "MaxHP": 40.0
+    "MaxHP": 40.0,
+    "AI": "Kiter",
+    "AggroRadius": 9.0,
+    "PreferredRange": 5.5,
+    "LeashDistance": 8.0
   },
   {
     "Id": "LampGhost",
     "Name": "提灯鬼",
+    "Description": "幽灵阵营，灵体输出",
     "Faction": "Ghost",
     "WeaponId": "Bow",
     "FollowRadius": 1.8,
-    "MaxHP": 30.0
+    "MaxHP": 30.0,
+    "AI": "Kiter",
+    "AggroRadius": 9.0,
+    "PreferredRange": 5.5,
+    "LeashDistance": 8.0
   },
   {
     "Id": "SquintFox",
     "Name": "眯眼狐",
+    "Description": "野兽阵营，近身撕咬",
     "Faction": "Beast",
     "WeaponId": "Sword",
     "FollowRadius": 1.4,
-    "MaxHP": 45.0
+    "MaxHP": 45.0,
+    "AI": "Aggro",
+    "AggroRadius": 7.0,
+    "PreferredRange": 1.4,
+    "LeashDistance": 8.0
+  },
+  {
+    "Id": "StitchedDoll",
+    "Name": "缝合娃娃",
+    "Description": "玩偶阵营，贴身辅助",
+    "Faction": "Doll",
+    "WeaponId": "Bow",
+    "FollowRadius": 1.7,
+    "MaxHP": 38.0,
+    "AI": "Guard",
+    "AggroRadius": 5.0,
+    "PreferredRange": 4.5,
+    "LeashDistance": 6.0
+  },
+  {
+    "Id": "Gearling",
+    "Name": "齿轮崽",
+    "Description": "机械阵营，近战钻头",
+    "Faction": "Machine",
+    "WeaponId": "Sword",
+    "FollowRadius": 1.5,
+    "MaxHP": 42.0,
+    "AI": "Aggro",
+    "AggroRadius": 6.0,
+    "PreferredRange": 1.3,
+    "LeashDistance": 7.0
+  },
+  {
+    "Id": "Wisp",
+    "Name": "幽光",
+    "Description": "幽灵阵营，灵球散射",
+    "Faction": "Ghost",
+    "WeaponId": "Orb",
+    "FollowRadius": 1.9,
+    "MaxHP": 28.0,
+    "AI": "Kiter",
+    "AggroRadius": 9.0,
+    "PreferredRange": 6.0,
+    "LeashDistance": 8.0
   }
 ]

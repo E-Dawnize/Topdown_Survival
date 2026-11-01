@@ -2,6 +2,7 @@
   {
     "Id": "Bow",
     "Name": "弓箭",
+    "Description": "自动索敌，稳定远程",
     "Kind": "Ranged",
     "BaseDamage": 8.0,
     "Cooldown": 0.85,
@@ -18,6 +19,7 @@
   {
     "Id": "Sword",
     "Name": "砍刀",
+    "Description": "近身扇形，伤害高",
     "Kind": "Melee",
     "BaseDamage": 15.0,
     "Cooldown": 0.6,
@@ -30,6 +32,76 @@
     "Params": [
       0.08,
       0.22
+    ]
+  },
+  {
+    "Id": "Dagger",
+    "Name": "双匕",
+    "Description": "极快近战，适合叠触发",
+    "Kind": "Melee",
+    "BaseDamage": 7.0,
+    "Cooldown": 0.32,
+    "Range": 1.9,
+    "Projectiles": 1,
+    "SpreadDeg": 35.0,
+    "BehaviourType": "Melee",
+    "ProjectileSpeed": 0.0,
+    "Pierce": 0,
+    "Params": [
+      0.04,
+      0.14
+    ]
+  },
+  {
+    "Id": "Crossbow",
+    "Name": "重弩",
+    "Description": "慢速高伤，穿透四人",
+    "Kind": "Ranged",
+    "BaseDamage": 26.0,
+    "Cooldown": 1.35,
+    "Range": 10.0,
+    "Projectiles": 1,
+    "SpreadDeg": 0.0,
+    "BehaviourType": "Ranged",
+    "ProjectileSpeed": 22.0,
+    "Pierce": 4,
+    "Params": [
+      0.0
+    ]
+  },
+  {
+    "Id": "Orb",
+    "Name": "灵球",
+    "Description": "三发散射，覆盖面广",
+    "Kind": "Ranged",
+    "BaseDamage": 5.0,
+    "Cooldown": 0.9,
+    "Range": 6.5,
+    "Projectiles": 3,
+    "SpreadDeg": 14.0,
+    "BehaviourType": "Ranged",
+    "ProjectileSpeed": 14.0,
+    "Pierce": 1,
+    "Params": [
+      0.0
+    ]
+  },
+  {
+    "Id": "Hammer",
+    "Name": "战锤",
+    "Description": "全向重击，清场用",
+    "Kind": "Melee",
+    "BaseDamage": 30.0,
+    "Cooldown": 1.2,
+    "Range": 2.8,
+    "Projectiles": 1,
+    "SpreadDeg": 180.0,
+    "BehaviourType": "Melee",
+    "ProjectileSpeed": 0.0,
+    "Pierce": 0,
+    "Params": [
+      0.18,
+      0.36
     ]
   }
 ]

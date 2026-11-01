@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b01c0dfafc1428aa2bda8975d3aa376b, type: 3}
   m_Name: UnitPrefabMap
   m_EditorClassIdentifier: 
+  _projectileArrow: {fileID: 1422973014292418801, guid: 62dad1bc12e824f42bfe212c8d5bc59f, type: 3}
   _entries:
   - Id: Player
     Prefab: {fileID: 2373766348291986862, guid: bcd5a68d0e2177943863dec4d561ce3b,

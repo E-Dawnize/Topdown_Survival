@@ -14,7 +14,7 @@
   {
     "Id": "Sack",
     "Name": "布袋",
-    "Description": "不能移动，全图吸取金币",
+    "Description": "不能移动，全图吸取经验",
     "BaseHP": 130.0,
     "BaseMoveSpeed": 0.0,
     "BaseAttackInterval": 0.75,

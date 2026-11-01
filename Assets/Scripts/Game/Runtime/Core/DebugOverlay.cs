@@ -1,4 +1,5 @@
 using System.Text;
+using Game.Core.Events;
 using Game.Services;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -34,6 +35,10 @@ namespace Game.Core
                 _visible = !_visible;
             }
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            HandleCheatKeys();
+#endif
+
             float dt = Time.unscaledDeltaTime;
             if (dt <= 0f) return;
 
@@ -49,6 +54,32 @@ namespace Game.Core
                 _worstFrameMs = _frameMs;
             }
         }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        /// <summary>
+        /// 开发构建专用调试键。放在调试覆盖层里，HUD 不再直接写模拟状态；
+        /// 发布构建用 DEVELOPMENT_BUILD 条件编译把整段排除掉。
+        /// </summary>
+        void HandleCheatKeys()
+        {
+            AppRoot root = AppRoot.Instance;
+            if (root == null || Keyboard.current == null) return;
+
+            if (Keyboard.current.f2Key.wasPressedThisFrame && root.Player != null)
+            {
+                root.Player.HP = Mathf.Max(0f, root.Player.HP - 10f);
+                Debug.Log("[Debug] 扣 10 生命");
+            }
+
+            if (Keyboard.current.f3Key.wasPressedThisFrame && root.Run != null)
+            {
+                root.Run.AddExperience(50);
+                root.Events?.Publish(new ExperienceGained(50, root.Run.TotalXp, root.Run.Level,
+                    root.Run.Xp, root.Run.XpToNext, root.Run.PendingLevelUps));
+                Debug.Log("[Debug] 加 50 经验");
+            }
+        }
+#endif
 
         void OnGUI()
         {
@@ -68,8 +99,7 @@ namespace Game.Core
             _sb.Clear();
             _sb.Append("FPS ").Append(_fps.ToString("0.0"))
                 .Append("   ").Append(_frameMs.ToString("0.00")).Append(" ms")
-                .Append("   peak ").Append(_worstFrameMs.ToString("0.0")).Append(" ms")
-                .Append('\n');
+                .Append("   peak ").Append(_worstFrameMs.ToString("0.0")).Append(" ms").Append('\n');
             _sb.Append("GC ").Append((System.GC.GetTotalMemory(false) / 1048576f).ToString("0.0")).Append(" MB");
 
             AppRoot root = AppRoot.Instance;
@@ -86,7 +116,15 @@ namespace Game.Core
                     _sb.Append("Config 未加载");
                 }
 
-                _sb.Append("   Seed ").Append(root.RunSeed).Append('\n');
+
+                if (root.RunController != null && root.Run != null)
+                {
+                    _sb.Append("Phase ").Append(root.RunController.Phase)
+                        .Append("   Lv ").Append(root.Run.Level)
+                        .Append("   XP ").Append(root.Run.Xp).Append('/').Append(root.Run.XpToNext)
+                        .Append("   Threat ").Append(root.Run.HighestThreat)
+                        .Append("   Enemies ").Append(root.Enemies != null ? root.Enemies.AliveCount : 0).Append('\n');
+                }
 
                 InputService input = root.Input;
                 if (input != null)
@@ -94,9 +132,7 @@ namespace Game.Core
                     Vector2 move = input.MoveAxis;
                     _sb.Append("Move (").Append(move.x.ToString("0.00")).Append(", ")
                         .Append(move.y.ToString("0.00")).Append(")   Dash ")
-                        .Append(input.DashPressed ? "按下" : "—")
-                        .Append("   Skill ")
-                        .Append(input.SkillPressed ? "按下" : "—");
+                        .Append(input.DashPressed ? "按下" : "—");
                 }
             }
             else

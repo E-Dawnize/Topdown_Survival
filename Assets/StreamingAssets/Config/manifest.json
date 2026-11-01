@@ -1,14 +1,16 @@
 {
-  "version": "4d0a1f41b8bc",
-  "exportedAt": "2026-10-29 20:11:02",
+  "version": "7ccd0df3a847",
+  "exportedAt": "2026-11-01 12:08:31",
   "tables": [
     "Character",
     "Weapon",
     "Companion",
-    "Item",
     "Enemy",
-    "Wave",
     "Buff",
+    "Director",
+    "Level",
+    "Upgrade",
+    "Combo",
     "Balance"
   ]
 }

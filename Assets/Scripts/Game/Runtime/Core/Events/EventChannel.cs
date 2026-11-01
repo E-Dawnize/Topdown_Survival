@@ -1,12 +1,17 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace Game.Core.Events
 {
     internal interface IEventChannel
     {
         bool HasPending { get; set; }
-        void DispatchPending();
+        bool HasQueued { get; }
+
+        /// <summary>分发本轮快照内的事件，返回队列里是否还有剩余事件。</summary>
+        bool DispatchPending();
+
         void Clear();
     }
 
@@ -22,6 +27,7 @@ namespace Game.Core.Events
         readonly Queue<T> _pending = new Queue<T>(16);
 
         public bool HasPending { get; set; }
+        public bool HasQueued => _pending.Count > 0;
         public int HandlerCount => _count;
 
         public bool Subscribe(Action<T> handler)
@@ -63,9 +69,12 @@ namespace Game.Core.Events
             _pending.Enqueue(evt);
         }
 
-        public void DispatchPending()
+        public bool DispatchPending()
         {
-            while (_pending.Count > 0)
+            // 只处理进入本轮时已经在队列里的事件。handler 新发布的同类型事件留到下一轮，
+            // 由 EventBus 的总预算统一限制；否则一个自触发的 handler 会让这个 while 永远不退出。
+            int count = _pending.Count;
+            for (int e = 0; e < count && _pending.Count > 0; e++)
             {
                 T evt = _pending.Dequeue();
                 int n = _count;
@@ -79,9 +88,20 @@ namespace Game.Core.Events
                 Array.Copy(_handlers, _dispatchBuffer, n);
                 for (int i = 0; i < n; i++)
                 {
-                    _dispatchBuffer[i]?.Invoke(evt);
+                    // 一个订阅者抛异常不应该让同事件的其他订阅者、以及后续事件全部丢掉。
+                    // 开发期能在 Console 看到完整堆栈，发布期也不会因为一个表现层异常卡住模拟。
+                    try
+                    {
+                        _dispatchBuffer[i]?.Invoke(evt);
+                    }
+                    catch (Exception exception)
+                    {
+                        Debug.LogException(exception);
+                    }
                 }
             }
+
+            return _pending.Count > 0;
         }
 
         public void Clear()

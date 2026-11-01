@@ -19,6 +19,16 @@ namespace Game.Tests
             public Pong(int value) { Value = value; }
         }
 
+        /// <summary>
+        /// 每个订阅者一个实例。直接写 `_ => total++` 是错的：同一个作用域里的 lamba 捕获同一个闭包，
+        /// 循环 50 次得到的是同一个委托实例，会被去重成一个订阅者。
+        /// </summary>
+        sealed class Counter
+        {
+            public int Total;
+            public void Handle(Ping _) => Total++;
+        }
+
         [Test]
         public void PublishIsDeferredUntilFlush()
         {
@@ -132,6 +142,35 @@ namespace Game.Tests
         }
 
         [Test]
+        public void ClearLeavesZeroSubscriptionsAndLateUnsubscribeIsANoOp()
+        {
+            // 场景重载时的真实顺序：AppRoot.OnDestroy 先把总线 Clear，HUD / 商店 / 结算面板的
+            // OnDisable 之后才逐个退订。退订落在 Clear 之后必须是空操作，
+            // 否则订阅计数会被减成负数，下一个场景里一开就“看着还有订阅”。
+            var bus = new EventBus();
+            Action<Ping> handler = _ => { };
+
+            bus.Subscribe(handler);
+            bus.Subscribe<Pong>(_ => { });
+            Assert.AreEqual(2, bus.SubscriptionCount);
+
+            bus.Clear();
+            Assert.AreEqual(0, bus.SubscriptionCount, "清理后订阅数归零");
+
+            bus.Unsubscribe(handler);
+            Assert.AreEqual(0, bus.SubscriptionCount, "清理后再退订不能把计数减成负数");
+
+            // 清空后重新订阅要能正常工作：新场景的订阅不被旧状态挡住
+            int pings = 0;
+            bus.Subscribe<Ping>(_ => pings++);
+            bus.Publish(new Ping(1));
+            bus.Flush();
+
+            Assert.AreEqual(1, pings);
+            Assert.AreEqual(1, bus.SubscriptionCount);
+        }
+
+        [Test]
         public void TypesAreIndependent()
         {
             var bus = new EventBus();
@@ -151,17 +190,42 @@ namespace Game.Tests
         {
             var bus = new EventBus();
             const int n = 50;
-            int total = 0;
+            var counters = new Counter[n];
             for (int i = 0; i < n; i++)
             {
-                bus.Subscribe<Ping>(_ => total++);
+                counters[i] = new Counter();
+                bus.Subscribe<Ping>(counters[i].Handle);
             }
 
             bus.Publish(new Ping(0));
             bus.Flush();
 
-            Assert.AreEqual(n, total);
+            for (int i = 0; i < n; i++)
+            {
+                Assert.AreEqual(1, counters[i].Total, $"订阅者 {i} 的收到次数不对");
+            }
             Assert.AreEqual(n, bus.SubscriptionCount);
+        }
+
+        [Test]
+        public void SameTypeSelfPublishStopsAtTheFlushBudget()
+        {
+            // 处理 Ping 时再 Publish Ping：旧实现会在 EventChannel 的 while 里无限消费，
+            // 外层 guard 根本没机会增长。现在每轮只处理本轮快照，预算用尽必须抛异常而不是挂死。
+            var bus = new EventBus(maxFlushSteps: 8);
+            int handled = 0;
+            Action<Ping> handler = null;
+            handler = _ =>
+            {
+                handled++;
+                bus.Publish(new Ping(handled));
+            };
+
+            bus.Subscribe(handler);
+            bus.Publish(new Ping(0));
+
+            Assert.Throws<InvalidOperationException>(() => bus.Flush());
+            Assert.Less(handled, 1000, "预算应限制自触发链，不能跑到无穷");
         }
     }
 }

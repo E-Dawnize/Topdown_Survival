@@ -1,0 +1,42 @@
+[
+  {
+    "Id": "C_Overload",
+    "Name": "过载",
+    "Description": "爆炸 + 闪电 → 命中引发爆炸",
+    "TagA": "explosive",
+    "CountA": 1,
+    "TagB": "chain",
+    "CountB": 1,
+    "BuffId": "Overload"
+  },
+  {
+    "Id": "C_BloodRite",
+    "Name": "血契",
+    "Description": "吸血 + 暴击 → 吸血比例提高",
+    "TagA": "lifesteal",
+    "CountA": 1,
+    "TagB": "crit",
+    "CountB": 1,
+    "BuffId": "BloodRite"
+  },
+  {
+    "Id": "C_Ballista",
+    "Name": "弩阵",
+    "Description": "2 远程 + 穿透 → 弹道 +1",
+    "TagA": "ranged",
+    "CountA": 2,
+    "TagB": "pierce",
+    "CountB": 1,
+    "BuffId": "Ballista"
+  },
+  {
+    "Id": "C_Whirlwind",
+    "Name": "旋风",
+    "Description": "2 近战 + 攻速 → 环绕刀",
+    "TagA": "melee",
+    "CountA": 2,
+    "TagB": "attackSpeed",
+    "CountB": 1,
+    "BuffId": "Whirlwind"
+  }
+]

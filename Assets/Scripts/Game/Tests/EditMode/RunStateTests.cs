@@ -6,33 +6,73 @@ namespace Game.Tests
     public class RunStateTests
     {
         [Test]
-        public void StartsEmpty()
+        public void StartsAtLevelOne()
         {
-            var run = new RunState();
+            RunState run = TestContent.NewRun();
 
-            Assert.AreEqual(0, run.Coins);
-            Assert.AreEqual(1, run.WaveIndex);
-            Assert.AreEqual(5, run.WavesTotal);
+            Assert.AreEqual(1, run.Level);
+            Assert.AreEqual(0, run.Xp);
+            Assert.AreEqual(0, run.PendingLevelUps);
+            Assert.AreEqual(10, run.MaxLevel);
+            Assert.AreEqual(5, run.XpToNext);
         }
 
         [Test]
-        public void AddAndSpendCoins()
+        public void ExperienceCarriesAcrossLevels()
         {
-            var run = new RunState();
-            run.AddCoins(30);
+            RunState run = TestContent.NewRun();
 
-            Assert.IsTrue(run.TrySpend(20));
-            Assert.AreEqual(10, run.Coins);
+            run.AddExperience(5);
+            Assert.AreEqual(2, run.Level);
+            Assert.AreEqual(0, run.Xp);
+            Assert.AreEqual(1, run.PendingLevelUps);
+
+            // 2→3 需要 6，3→4 需要 7，4→5 需要 8；20 点只够升到 4 级，剩 7 点
+            run.AddExperience(20);
+            Assert.AreEqual(4, run.Level);
+            Assert.AreEqual(7, run.Xp);
+            Assert.AreEqual(3, run.PendingLevelUps, "一次拾取跨两级，应该排队 3 次（包含第一次）");
         }
 
         [Test]
-        public void SpendMoreThanOwnedKeepsBalance()
+        public void ConsumePendingUpgradeOneAtATime()
         {
-            var run = new RunState();
-            run.AddCoins(10);
+            RunState run = TestContent.NewRun();
+            run.AddExperience(5);
+            run.AddExperience(6);
 
-            Assert.IsFalse(run.TrySpend(999));
-            Assert.AreEqual(10, run.Coins);
+            Assert.AreEqual(2, run.PendingLevelUps);
+            Assert.IsTrue(run.ConsumePendingLevelUp());
+            Assert.AreEqual(1, run.PendingLevelUps);
+            Assert.IsTrue(run.ConsumePendingLevelUp());
+            Assert.AreEqual(0, run.PendingLevelUps);
+            Assert.IsFalse(run.ConsumePendingLevelUp());
+        }
+
+        [Test]
+        public void MaxLevelStopsAccumulating()
+        {
+            RunState run = TestContent.NewRun();
+            run.AddExperience(100000);
+
+            Assert.AreEqual(run.MaxLevel, run.Level);
+            Assert.AreEqual(0, run.Xp);
+            Assert.AreEqual(0f, run.XpRatio);
+            Assert.IsTrue(run.IsMaxLevel);
+        }
+
+        [Test]
+        public void KillStatsCountEliteAndBoss()
+        {
+            RunState run = TestContent.NewRun();
+
+            run.AddKill(false, false);
+            run.AddKill(true, false);
+            run.AddKill(false, true);
+
+            Assert.AreEqual(3, run.Kills);
+            Assert.AreEqual(1, run.EliteKills);
+            Assert.AreEqual(1, run.BossKills);
         }
 
         [Test]

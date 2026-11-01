@@ -244,7 +244,7 @@ GameObject:
   - component: {fileID: 4361586012653279714}
   - component: {fileID: 2844892040628796985}
   m_Layer: 0
-  m_Name: CoinText
+  m_Name: ProgressText
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -310,7 +310,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 1
     m_VerticalOverflow: 1
     m_LineSpacing: 1
-  m_Text: "\u91D1\u5E01  0"
+  m_Text: "Lv 1\u3000\u7ECF\u9A8C 0 / 10"
 --- !u!1 &5658460656288721647
 GameObject:
   m_ObjectHideFlags: 0
@@ -464,8 +464,8 @@ MonoBehaviour:
     m_HorizontalOverflow: 1
     m_VerticalOverflow: 1
     m_LineSpacing: 1
-  m_Text: "WASD \u79FB\u52A8    \u7A7A\u683C \u51B2\u523A    F2 \u6263\u8840    F3
-    \u52A0\u91D1\u5E01    F1 \u8C03\u8BD5\u4FE1\u606F"
+  m_Text: "WASD \u79FB\u52A8    \u7A7A\u683C \u51B2\u523A    F1 \u8C03\u8BD5\u4FE1\u606F    F2
+    \u6263\u8840    F3 \u52A0\u7ECF\u9A8C"
 --- !u!1 &6086116488279682395
 GameObject:
   m_ObjectHideFlags: 0
@@ -573,7 +573,7 @@ RectTransform:
   m_GameObject: {fileID: 6416697460837380830}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 2730994884526108172}
@@ -649,13 +649,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _hpFill: {fileID: 2985393288532411177}
   _hpText: {fileID: 5638253331550724761}
-  _coinText: {fileID: 2844892040628796985}
-  _waveText: {fileID: 3854286096830904503}
+  _progressText: {fileID: 2844892040628796985}
+  _threatText: {fileID: 3854286096830904503}
   _dashFill: {fileID: 5861225905525070527}
   _dashText: {fileID: 7507481548218931972}
   _hintBackdrop: {fileID: 541602875926558877}
   _hintText: {fileID: 561570631279628748}
-  _enableDebugKeys: 1
 --- !u!1 &8224861563853160948
 GameObject:
   m_ObjectHideFlags: 0
@@ -743,7 +742,7 @@ GameObject:
   - component: {fileID: 7185100034823219347}
   - component: {fileID: 3854286096830904503}
   m_Layer: 0
-  m_Name: WaveText
+  m_Name: ThreatText
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -809,7 +808,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 1
     m_VerticalOverflow: 1
     m_LineSpacing: 1
-  m_Text: "\u7B2C 1 / 5 \u6CE2"
+  m_Text: "\u5A01\u80C1 Lv 1"
 --- !u!1 &8586821023539698537
 GameObject:
   m_ObjectHideFlags: 0

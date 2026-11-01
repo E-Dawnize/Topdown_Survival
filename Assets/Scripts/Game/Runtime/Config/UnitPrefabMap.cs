@@ -19,6 +19,11 @@ namespace Game.Config
 
         [SerializeField] Entry[] _entries = Array.Empty<Entry>();
 
+        /// <summary>所有持有者共用的箭 prefab；在 UnitPrefabMap 资产里指定，不在代码里按名字查。</summary>
+        [SerializeField] GameObject _projectileArrow;
+
+        public GameObject ProjectileArrow => _projectileArrow;
+
         public GameObject Find(string id)
         {
             if (string.IsNullOrEmpty(id) || _entries == null) return null;
