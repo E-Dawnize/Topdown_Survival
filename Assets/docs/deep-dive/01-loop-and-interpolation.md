@@ -1,4 +1,5 @@
 # 主循环与渲染插值：怎么落地
+> 文档目录：[docs/README.md](../README.md)
 
 ## 要解决的问题
 
@@ -19,7 +20,8 @@ public sealed class RunClock
     float _hitStop;
 
     public float Alpha => IsHitStopped ? 1f : Mathf.Clamp01(_accumulator / FixedStep);
-    public int Advance(float realDelta) { /* 累积、截断、返回 0..3 */ }
+    public int BeginFrame(float realDelta) { /* 累积、截断、返回本轮最多 0..3 步 */ }
+    public bool TryConsumeStep() { /* 真正执行一步时才扣累加器 */ }
     public void RequestHitStop(float seconds) { /* 取更长的那个 */ }
 }
 ```
@@ -29,14 +31,19 @@ public sealed class RunClock
 第二步，把每步的系统顺序独立成 `RunSimulation`。主循环和集成测试共用同一个实例化路径，测试验的才是真实接入顺序，而不是测试里另抄一份。
 
 ```
+RunController.Tick        // 计时/死亡/升级暂停/BOSS 切换
 PlayerController.Tick
+CompanionSystem.Move
 EnemySystem.Tick          // 先动
 SpatialGrid.Rebuild       // 再重建，武器读的是这一步的位置
+Player stats snapshot     // Attack/Crit/AttackSpeed/Range
+Regen + ContactDamage
 PlayerWeapons.Tick
 CompanionWeapons.Tick
-Cleanup                   // 打死的人在这摘掉，掉落在这生成
-PickupSystem.Tick
-WaveController.Tick
+Cleanup                   // 打死的人在这摘掉，掉落经验在这生成
+PickupSystem.Tick         // 拾取经验、排队升级
+BuffSystem.Tick           // 低血/周期回复
+DirectorSystem.Tick       // 时间轴刷怪 / BOSS 召唤
 Events.Flush              // 整轮结束才分发
 ```
 

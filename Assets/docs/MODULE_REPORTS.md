@@ -1,9 +1,12 @@
 # 模块报告
 
+> **历史快照**：本文对应 v0.2（波次 + 商店 + 金币）。当前 v0.3 已改为单局时间轴 + 经验构筑 + BOSS，见 `STATUS.md` / `GDD.md`。
+> 文档目录：[docs/README.md](README.md)
+
 日期：2026-10-31
 分支：`feat/demo`
 
-按代码模块给出职责、关键技术选型、验证情况与已知问题。测试数字来自 `grep -c "\[Test\]"`，192 个用例的总分布见文末。
+按代码模块给出职责、关键技术选型、验证情况与已知问题。测试数字来自 `grep -c "[Test]"`；本文保留 v0.2/v0.3 历史数字，当前为 219 EditMode + 5 PlayMode（相机、近战动作、弓箭搭箭、搭箭交接、箭直线路径），以 `STATUS.md` 为准。
 
 ---
 
@@ -29,7 +32,7 @@
 
 文件：`Core/Events/*`（4 文件）、`Core/DeterministicRandom.cs`、`Core/InputSnapshot.cs`、`Services/InputService.cs`
 
-事件总线把 `Publish` 写进待发队列，整轮结束统一 `Flush`。订阅方不会读到半更新状态，代价是所有事件晚一帧——商店关店后输入切回 Player 就损失一帧移动输入。
+事件总线把 `Publish` 写进待发队列，整轮结束统一 `Flush`。订阅方不会读到半更新状态，代价是所有事件晚一帧——商店关店后输入切回 Player 就损失一帧移动输入。每个频道每轮只处理进入本轮时已有的事件，`EventBus` 用总预算限制同类型自触发；单个订阅者异常会被隔离，不再阻断同事件的其他订阅者。
 
 去重按委托相等，同一个委托实例订阅两次只执行一次。这条规则踩过一次：测试里 `_ => total++` 捕获同一闭包，50 次订阅拿到同一个委托，被去重成一个，那个测试从来没真正通过。
 
@@ -37,7 +40,7 @@
 
 输入用 `InputActionSetupExtensions` 在运行时构建 Action，不依赖 `.inputactions` 资产。Player 与 UI 两个 Map，进商店和结算切 UI，关掉切回。
 
-验证：`EventBusTests` 10 条。输入与随机没有独立单测，随机通过刷怪分布与抽卡分布间接验证。
+验证：`EventBusTests` 11 条（含同类型自触发预算）。输入缓冲在 `PlayerMovementTests` 有一条零步帧锁存用例；随机通过刷怪分布与抽卡分布间接验证。
 
 已知问题：改键要改代码，I4 做按键自定义时得迁回资产。
 
@@ -115,9 +118,20 @@
 
 暴击按一次扳机掷一次，同一枪的多发弹道同暴击。这与技术方案原文的"每发单独结算"不同，已改文档。
 
-验证：`RangedWeaponTests` 12 条、`MeleeWeaponTests` 6 条。射程边界、冷却、穿透、扇形、单次去重、攻速翻倍 DPS 精确两倍都钉死了。
+表现层是 `Views/WeaponVisualStyle.cs`、`WeaponVisualCatalog.cs`、`WeaponVisual.cs`、`WeaponRackView.cs`：
 
-已知问题：距离衰减恒为 1.0 是死代码；`Pierce` 定义为命中总数而非额外穿透数；`SpreadDeg` 一个字段两种含义。
+> v0.3.3 更新：下面这段已从"运行时拼几何体"改为"CC0 FBX → prefab → catalog"。
+> 旧实现保留在 git 历史里；当前管线以 `Assets/docs/WEAPON_ASSETS.md` 为准。
+
+- `WeaponVisualStyle` 只放与资源无关的纯数据：玩家 1–4 槽位、旅伴槽位/缩放、跟随拖尾参数。动作类型/时长与模型 Id 的映射在 `WeaponVisualCatalog` 资产里。
+- `WeaponVisualCatalog` 是武器 Id → prefab/动作/时长的唯一入口；prefab 根节点自带 `WeaponVisual`，模型来自 Quaternius / KayKit 的 CC0 FBX。缺条目/缺 prefab 直接报错，不生成白模。
+- `WeaponVisual` 只操作 prefab 根 Transform：每帧比较 `WeaponModel.ShotsFired`，变化时播放一次剑扫、双匕双扫、战锤下砸、弓拉弦后坐、弩后坐、灵球脉冲；枪口/刀尖闪光只亮 0.16 秒。远程开火把真实 `aim` 写进 `WeaponModel.AimDirection`，模型按它绕 Y 转。
+- `WeaponRackView` 只在武器数量、顺序或 WeaponModel 实例引用变化时重建；升级同一把武器不重造模型。`PlayerView.Sync` 每帧把当前 `WeaponSystem.Weapons` 和玩家速度交给它；武器用 `SmoothDamp` 追“槽位 + 速度反方向拖尾”，静止回槽位，冲刺按 1.1m 夹紧。
+- 旅伴只有一把武器，挂在 `WeaponAnchor` 上：旅伴胶囊根节点被压扁成 (0.7, 0.3, 0.7)，锚点反向缩放，世界空间仍是 1:1，再乘 0.5 的武器缩放；`CompanionViewPool` 每帧对一次武器引用，以后换刀能显示。
+
+验证：`RangedWeaponTests` 14 条、`MeleeWeaponTests` 6 条；`WeaponVisualCatalogTests` 5 条（真实配置覆盖、prefab 契约、六种动作互异、近战/远程时长约束）、`WeaponVisualStyleTests` 3 条（槽位、拖尾/转向、旅伴缩放）、`ProjectileArrowTests` 1 条（箭 prefab 与 +Z 长轴）；`WeaponVisualPlayTests` 5 条 PlayMode（相机、catalog prefab 近战、弓箭搭箭窗口、搭箭交接、箭直线路径）。射程边界、冷却、穿透、扇形、单次去重、攻速翻倍 DPS 精确两倍都钉死了。
+
+已知问题：距离衰减恒为 1.0 是死代码；`Pierce` 定义为命中总数而非额外穿透数；`SpreadDeg` 一个字段两种含义；表现层靠轮询 `ShotsFired`，若以后改开火逻辑必须保持该计数在真正挥砍/开火时 +1；武器模型无 LOD，最多 4 把玩家武器 + 4 个旅伴武器，零件数需在真机看 draw call。
 
 ---
 
@@ -129,9 +143,11 @@
 
 玩家不直接写 Transform：`PlayerView.Sync` 只接受 `ViewSnapshot`，位置与朝向都是插值后的值。描边壳是一个放大 1.12 倍、背面渲染的网格副本，用共享材质加属性块。
 
-验证：`PlayerMovementTests` 10 条、`PlayerModelTests` 4 条。
+`PlayerView.Awake` 同时挂 `WeaponRackView`，武器模型是玩家根节点的子物体，随玩家转向；渲染位置仍来自 `ViewSnapshot`，不读 Model。
 
-已知问题：手感参数（移速 5、冲刺 15）只在纸面和断言里成立。
+验证：`PlayerMovementTests` 11 条（含输入锁存跨零步帧）、`PlayerModelTests` 4 条。
+
+已知问题：手感参数（移速 5、冲刺 15）只在纸面和断言里成立；武器是悬浮在胶囊周围的表现件，没有手臂/握持动画。
 
 ---
 
@@ -167,11 +183,11 @@
 
 文件：`Model/CompanionModel.cs`、`Systems/CompanionSystem.cs`、`Systems/CompanionBonds.cs`、`Views/CompanionView*.cs`
 
-旅伴走固定角度环绕点跟随，无寻路，超过 4 米瞬移回位，另加一道 O(n²) 两两松解处理追赶途中的短暂重叠。没有单独建空间网格，也不参与敌人的分离力。每个旅伴一套 `WeaponSystem`，`UnitId` 从 1000 段位分配，击杀记在旅伴头上。
+旅伴走固定角度环绕点，目标点按玩家速度轻微拖尾，用 SmoothDamp 阻尼跟随（0.22 秒）；无寻路，超过 4 米瞬移回位，另加一道 O(n²) 两两松解处理追赶途中的短暂重叠。没有单独建空间网格，也不参与敌人的分离力。每个旅伴一套 `WeaponSystem`，`UnitId` 由本局共享的 `UnitIdAllocator` 分配，击杀记在旅伴头上。
 
 重复购买升级，每级伤害 +40%、攻击间隔 -8%，满级 3。羁绊按阵营计数，2 件一级、4 件二级，二级替换不叠加；重算时先把旧的整条 `RemoveBySource` 再重建，掉档时逐项回基线。
 
-验证：`CompanionSystemTests` 8 条、`CompanionBondTests` 3 条、`CompanionViewTests` 12 条。4 个旅伴跟随时最小间距大于身体直径、不掉队；掉到 1 件后逐项与招募前快照比对。
+验证：`CompanionSystemTests` 覆盖阻尼起步、速度拖尾、4 个旅伴间距/不掉队、4 米瞬移、AI 接敌/撤退；`CompanionBondTests` 与 `CompanionViewTests` 覆盖羁绊与视图。
 
 已知问题：配置只有 3 个旅伴且每阵营一个，4 件羁绊实际到不了；旅伴不会受伤；不夹场地边界。
 
@@ -197,13 +213,24 @@ UI 全部运行时用 uGUI 代码搭：HUD、商店、结算、主菜单。不�
 
 文件：`Views/CameraRig.cs`、`Views/CameraPreset.cs`、`Core/AppRoot.cs`、`Core/SceneFlow.cs`、`Views/MainMenuBootstrap.cs`
 
-`CameraRig` 在运行时建 `CameraTarget` 与 vcam，取景参数（正交视野、俯角、距离、裁剪、阻尼、边界半宽）来自 `CameraPreset` 资产，两份预设分别服务 Run 与 Test_Arena。跟随平滑交给 `CinemachineTransposer` 的阻尼，边界夹紧自己做：Confiner3D 要一个斜着包住 50° 轨迹的 3D 体积，规则反而看不见。
+`CameraRig` 在运行时建 `CameraTarget` 与 vcam，取景参数（正交视野、俯角、距离、裁剪、跟踪偏移、屏幕偏移、跟随阻尼、矩形死区、边界、优先级、震动增益）来自 `CameraPreset` 资产。相机朝向固定在 `(Tilt, 0, 0)`；`CinemachineTransposer` 只按焦点定位，阻尼为 0；死区与 SmoothDamp 在纯类 `CameraFocus` 里按地面 X/Z 两轴算。边界夹紧自己做：Confiner3D 要一个斜着包住 50° 轨迹的 3D 体积，规则反而看不见。
+
+当前四份预设：
+
+| 预设 | 用途 | 关键参数 |
+|---|---|---|
+| `CameraPreset_Run` | 正式 Run 场景 | size 7，矩形死区 0.14，SmoothDamp 0.32，边界 80 |
+| `CameraPreset_TestArena` | 40×40 测试场 | size 7，矩形死区 0.14，SmoothDamp 0.32，边界 20 |
+| `CameraPreset_Boss` | BOSS 拉远（供后续相机模式使用） | size 10，俯角 55，死区 0.12，SmoothDamp 0.40，优先级 110 |
+| `CameraPreset_Menu` | 商店/结算静帧（供后续相机模式使用） | size 8，阻尼 0，死区 0，关闭边界夹紧，优先级 90，震屏 0 |
+
+Run 与 Test_Arena 的场景引用已经切到对应预设；Boss/Menu 目前只是配置基础，`CameraRig` 还没有多相机模式切换。
 
 `AppRoot` 是唯一装配根，加载配置、实例化预制体、持有所有系统与视图池。主菜单用 `RuntimeInitializeOnLoadMethod` 加 `sceneLoaded` 钩子运行时搭，不改场景。
 
-验证：无单测。相机参数与边界只有代码审查。
+验证：`CameraFocusTests` 覆盖矩形死区、横/纵单轴、对角、阻尼收敛、零阻尼和回框停住；`CameraRigPlayTests` 用真实 CameraRig + CinemachineBrain 验证 0.14 死区和横/纵两轴落点。边界夹紧与震屏仍只有手验。
 
-已知问题：`Damping` 的语义是"追上 99% 所需秒数"，不是时间常数，填错会看着像锁死；这份预设资产是手写 YAML，Unity 里读到什么值没确认。
+已知问题：`Damping` 现在是 `CameraFocus` 的 SmoothDamp `smoothTime`（秒），不是 Cinemachine 的阻尼时间；相机只有装配层 PlayMode 用例，完整流程、边界夹紧和震屏仍未自动化。Test_Arena 的相机边界（20）与玩家边界（Balance 里的 67）不一致，靠墙测试时相机会提前停止。四份预设资产是手写 YAML，Unity 里读到什么值需要在 PlayMode 确认。
 
 ---
 
@@ -216,14 +243,16 @@ UI 全部运行时用 uGUI 代码搭：HUD、商店、结算、主菜单。不�
 | 武器 | 18 |
 | 旅伴与羁绊 | 23 |
 | 局流程与重开 | 23 |
-| 玩家 | 14 |
+| 玩家 | 15 |
 | 空间索引与刷怪环 | 13 |
 | HUD | 7 |
 | 敌人 | 7 |
-| 事件总线 | 10 |
-| 集成（RunSimulation / WaveFlow） | 8 |
+| 事件总线 | 11 |
+| 集成（RunSimulation / WaveFlow） | 9 |
 | 掉落与拾取 | 8 |
-| 定格与命中反馈 | 4 |
-| 合计 | 192 |
+| 定格与命中反馈 | 5 |
+| 合计（v0.3） | 196 |
 
-没有测试覆盖的模块：配置管线、输入服务、相机、装配根、全部 UI 渲染与布局。这些只能靠 Unity 里跑一遍。
+新增 `CameraFocusTests` 7 条、旅伴拖尾 1 条、`WeaponVisualStyleTests` 7 条后，当前 EditMode 为 206 条；另有 `CameraRigPlayTests` 与 `WeaponVisualPlayTests` 2 条 PlayMode 用例。表里是 v0.3 阶段的历史分布，合计 196 不含这些后加用例。
+
+没有测试覆盖的模块：配置管线、输入服务、装配根、全部 UI 渲染与布局；相机的边界夹紧与震屏仍只有手验。这些只能靠 Unity 里跑一遍。

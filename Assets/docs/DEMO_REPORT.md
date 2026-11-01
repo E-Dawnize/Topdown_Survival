@@ -1,4 +1,9 @@
 # feat/demo 交付报告
+> **历史快照**：本文对应 v0.2（波次 + 商店 + 金币）。当前 v0.3 已改为单局时间轴 + 经验构筑 + BOSS，见 `STATUS.md` / `GDD.md`。
+
+> 文档目录：[docs/README.md](README.md)
+
+> 本报告记录 feat/demo 交付时的快照。之后当前工作区完成了 P0/P1 修复，测试数从 192 增至 196，启动入口、输入/时钟、实体 ID、事件总线、相机与预设均有变化；当前状态以 `Assets/docs/STATUS.md`、`Assets/docs/progress.md` 和 `Assets/docs/ARCHITECTURE_REVIEW.md` 为准。
 
 日期：2026-10-31
 分支：`feat/demo`（从 `main` 的 `2ef49d1` 开出，13 个提交，已推送）
@@ -113,12 +118,12 @@ dotnet build Game.Tests.EditMode.csproj -t:Rebuild
 2. **主菜单能否进游戏。** `MainMenuBootstrap` 用 `RuntimeInitializeOnLoadMethod` 加 `sceneLoaded` 钩子运行时搭菜单，场景里没有对应组件。
 3. **整局能否跑通。** 从 MainMenu 到结算，三波打完，中途不崩、不报红字。
 4. **HUD 与面板是否可见。** 血条、金币、波次倒计时、商店 6 格、结算面板，以及中文字形。
-5. **相机预设是否读到。** `Assets/Presets` 下两份 `.asset` 是手写 YAML，需要确认 Inspector 里字段有值。
+5. **相机预设是否读到。** `Assets/Presets` 下的 Run / TestArena / Boss / Menu 四份 `.asset` 是手写 YAML，需要确认 Inspector 里字段有值。
 6. **敌人、旅伴、投射物、金币的视觉区分度。** 敌人是方块、旅伴是矮胶囊、玩家是有描边的胶囊。
 7. **商店键盘操作。** 方向键、Enter、R、Esc 的实际响应与摇杆死区。
 8. **重开三次是否干净。** 金币、属性、队伍、保底计数、输入 Map。
 9. **帧率与 draw call。** 200 敌场景的实际表现，`perf-log.md` 里这两项仍是"未测"。
-10. **手感。** 移速 5、冲刺 15、相机阻尼 0.7、击退强度、hitstop 时长。
+10. **手感。** 移速 5、冲刺 15、相机位置阻尼 0.35 / 朝向阻尼 0.18、击退强度、hitstop 时长。
 
 ---
 
