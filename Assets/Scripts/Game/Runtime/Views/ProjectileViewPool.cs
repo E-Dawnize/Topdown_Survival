@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using Game.Config;
 using Game.Systems;
 using Game.Systems.Weapons;
 using UnityEngine;
@@ -8,7 +7,7 @@ namespace Game.Views
 {
     /// <summary>
     /// 投射物的显示池。玩家与所有旅伴共用这一个池：按"持有者 + 持有者自己的池槽位号"存实例，
-    /// 一个共享材质的小方块，飞走以后隐藏、下一次任何人的箭都可以复用。
+    /// 同一个箭 prefab，飞走以后隐藏、下一次任何人的箭都可以复用。
     ///
     /// 为什么合并成一个池而不是每个旅伴各建一套：旅伴最多 4 个，各自一套池就是 5 套实例池、
     /// 5 份槽位表，而箭的外观本来只有"谁的"这一个维度——按持有者换颜色与大小就够了
@@ -22,6 +21,7 @@ namespace Game.Views
         /// <summary>一个持有者（玩家或某个旅伴）的视图表。大小等于它自己那个 ProjectileSystem 的容量。</summary>
         sealed class OwnerViews
         {
+            public int OwnerKey;
             public ProjectileSystem Projectiles;
             public ProjectileView.Look Look;
             public ProjectileView[] Views;
@@ -30,7 +30,7 @@ namespace Game.Views
 
         readonly ProjectileViewSources _sources;
         readonly Transform _parent;
-        readonly Material _sharedMaterial;
+        readonly GameObject _arrowPrefab;
 
         readonly Dictionary<int, OwnerViews> _owners = new Dictionary<int, OwnerViews>(1 + CompanionSystem.MaxCompanions);
 
@@ -42,34 +42,32 @@ namespace Game.Views
         readonly List<int> _staleOwnerKeys = new List<int>(1 + CompanionSystem.MaxCompanions);
 
         /// <summary>companions 可空：只装玩家战斗的场景照旧只有玩家那一路箭。</summary>
-        public ProjectileViewPool(UnitPrefabMap prefabMap, ProjectileSystem playerProjectiles,
-            CompanionSystem companions, Transform parent)
+        public ProjectileViewPool(ProjectileSystem playerProjectiles, CompanionSystem companions,
+            Transform parent, GameObject arrowPrefab)
         {
             _parent = parent;
-            _sharedMaterial = SharedViewMaterial.FromPlayerPrefab(prefabMap);
+            _arrowPrefab = arrowPrefab;
             _sources = new ProjectileViewSources(playerProjectiles, companions);
-
-            if (_sharedMaterial == null)
-            {
-                Debug.LogError("[ProjectileViewPool] 找不到可复用的共享材质，箭不会显示。" +
-                               "玩家预制体得有一个 Renderer 带材质");
-                return;
-            }
-
             RebuildOwners();
+
+            if (_arrowPrefab == null)
+            {
+                Debug.LogError("[ProjectileViewPool] UnitPrefabMap 没有指定 ProjectileArrow，" +
+                               "箭不会显示。检查 Assets/Prefabs/UnitPrefabMap.asset");
+            }
         }
 
         /// <summary>一个渲染帧同步一次。alpha 由 RunLoop 按累加器余量算。</summary>
         public void Sync(float alpha)
         {
-            if (_sharedMaterial == null) return;
-
             // 队伍变了（招募 / 离队 / 同槽位换人）：先把持有者表对齐，之后每帧都不再分配
             if (_sources.Refresh()) RebuildOwners();
 
             foreach (KeyValuePair<int, OwnerViews> pair in _owners)
             {
                 OwnerViews owner = pair.Value;
+
+                bool hasMuzzle = ProjectileMuzzleRegistry.TryGet(pair.Key, 0.12f, out Vector3 muzzle);
 
                 bool[] visible = owner.Visible;
                 for (int i = 0; i < visible.Length; i++) visible[i] = false;
@@ -79,10 +77,13 @@ namespace Game.Views
                 {
                     if (!owner.Projectiles.TryGetActive(i, out ProjectileSystem.Snapshot shot)) continue;
 
-                    ProjectileView view = Rent(owner, shot.Slot);
+                    // 刚生成的投射物 PrevPosition == Position；只有它能消费弓上摘下来的搭箭。
+                    bool isNew = (shot.Position - shot.PrevPosition).sqrMagnitude < 1e-8f;
+                    ProjectileView view = Rent(owner, shot.Slot, isNew);
                     if (view == null) continue;
 
-                    view.Sync(shot.PrevPosition, shot.Position, alpha, shot.Direction);
+                    view.Sync(shot.PrevPosition, shot.Position, alpha, shot.Direction,
+                        shot.Origin, shot.AimPoint, hasMuzzle, muzzle);
                     visible[shot.Slot] = true;
                 }
 
@@ -144,6 +145,7 @@ namespace Game.Views
 
             return new OwnerViews
             {
+                OwnerKey = source.OwnerKey,
                 Projectiles = source.Projectiles,
                 Look = new ProjectileView.Look(source.Tint, source.Scale),
                 Views = new ProjectileView[capacity],
@@ -170,8 +172,28 @@ namespace Game.Views
             }
         }
 
-        ProjectileView Rent(OwnerViews owner, int slot)
+        ProjectileView Rent(OwnerViews owner, int slot, bool isNew)
         {
+            // 这一发是刚生成的：优先把弓上摘下来的那支箭接过来，而不是从空闲池拿一支别的。
+            if (isNew)
+            {
+                ProjectileView handoff = TakeHandoff(owner.OwnerKey);
+                if (handoff != null)
+                {
+                    ProjectileView old = owner.Views[slot];
+                    if (old != null && old != handoff)
+                    {
+                        old.gameObject.SetActive(false);
+                        _idle.Push(old);
+                    }
+
+                    owner.Views[slot] = handoff;
+                    handoff.gameObject.SetActive(true);
+                    handoff.ApplyLook(owner.Look);
+                    return handoff;
+                }
+            }
+
             ProjectileView view = owner.Views[slot];
             if (view == null)
             {
@@ -185,20 +207,36 @@ namespace Game.Views
             return view;
         }
 
+        ProjectileView TakeHandoff(int ownerKey)
+        {
+            GameObject arrow = ProjectileNockedHandoff.Take(ownerKey, 0.25f);
+            if (arrow == null) return null;
+
+            arrow.transform.SetParent(_parent, false);
+            arrow.SetActive(true);
+
+            ProjectileView view = arrow.GetComponent<ProjectileView>();
+            if (view == null) view = arrow.AddComponent<ProjectileView>();
+            view.Initialize();
+            return view;
+        }
+
         ProjectileView CreateView()
         {
-            if (_sharedMaterial == null) return null;
+            if (_arrowPrefab == null) return null;
 
-            GameObject instance = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            instance.name = "Projectile";
-            instance.transform.SetParent(_parent, false);
+            GameObject instance = Object.Instantiate(_arrowPrefab, _parent, false);
+            instance.name = "Projectile_Arrow";
 
-            // 纯表现物件：自带 Collider 只会让物理系统白算
-            Collider collider = instance.GetComponent<Collider>();
-            if (collider != null) Object.Destroy(collider);
+            ProjectileView view = instance.GetComponent<ProjectileView>();
+            if (view == null)
+            {
+                Debug.LogError("[ProjectileViewPool] Projectile_Arrow.prefab 上没有 ProjectileView");
+                Object.Destroy(instance);
+                return null;
+            }
 
-            ProjectileView view = instance.AddComponent<ProjectileView>();
-            view.Initialize(_sharedMaterial);
+            view.Initialize();
             return view;
         }
     }

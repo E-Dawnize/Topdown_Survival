@@ -10,7 +10,7 @@ namespace Game.Views
     /// 候选名按平台排：Windows 上第一个能用的是微软雅黑；macOS / Linux 的名字也列进来，
     /// 但只在 Windows 上验证过，换平台要实测。
     ///
-    /// 缓存一份实例：动态字体每 new 一份就多一张字形图集，HUD 与商店各来一份等于双倍字体纹理。
+    /// 缓存一份实例：动态字体每 new 一份就多一张字形图集，HUD 与升级/结算各来一份等于双倍字体纹理。
     /// </summary>
     public static class UiFont
     {

@@ -65,6 +65,25 @@ namespace Game.Views
             renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
             renderer.SetPropertyBlock(SharedBlock());
 
+            // 本地绕 X 转 90°：网格在本地 XY 平面，转完躺到世界 XZ 平面（多边形的绕序见 SharedMesh）
+            shadow.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            Fit(shadow, bodyRadius);
+
+            return shadow;
+        }
+
+        /// <summary>
+        /// 按父节点当前的世界缩放重算本地缩放与贴地高度。
+        /// UnitView 在池复用时会改根节点的 localScale（精英/BOSS 更大），阴影必须跟着重算，
+        /// 否则它会按上一个敌人的尺寸停在那里。
+        /// </summary>
+        public static void Fit(Transform shadow, float bodyRadius)
+        {
+            if (shadow == null) return;
+
+            Transform host = shadow.parent;
+            if (host == null) return;
+
             // 父节点的世界缩放不一定等于 1（Crawler 预制体是 0.7），本地缩放要折回去，
             // 否则不同怪种的阴影大小跟着预制体缩放走，看起来像"小怪的影子更小"这种没有理由的差异
             Vector3 hostScale = host.lossyScale;
@@ -73,13 +92,8 @@ namespace Game.Views
             float diameter = bodyRadius * 2f * DiameterScale;
             shadow.localScale = new Vector3(diameter / scaleX, diameter / scaleY, 1f);
 
-            // 本地绕 X 转 90°：网格在本地 XY 平面，转完躺到世界 XZ 平面（多边形的绕序见 SharedMesh）
-            shadow.localRotation = Quaternion.Euler(90f, 0f, 0f);
-
             // 贴地：父节点原点在模型自己抬起来的高度上（Crawler 是 y = 0.35），要按父节点缩放折回本地
             shadow.localPosition = new Vector3(0f, (GroundOffset - host.position.y) / scaleY, 0f);
-
-            return shadow;
         }
 
         /// <summary>

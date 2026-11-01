@@ -42,7 +42,8 @@ namespace Game.Views
             // 不挂到场景里那个空的 MenuRoot 下面：Overlay Canvas 的大小由屏幕决定、与父节点无关，
             // 挂上去除了把菜单藏进一个看不见的空节点底下，没有任何好处。
             var go = new GameObject("MainMenuCanvas", typeof(RectTransform));
-            go.AddComponent<MainMenuView>();
+            MainMenuView view = go.AddComponent<MainMenuView>();
+            view.Initialize(new UnitySceneFlow());
         }
     }
 }

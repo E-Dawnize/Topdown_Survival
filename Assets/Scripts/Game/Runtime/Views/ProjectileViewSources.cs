@@ -25,18 +25,18 @@ namespace Game.Views
         public static readonly Color PlayerTint = new Color(1f, 0.88f, 0.4f);
 
         /// <summary>
-        /// 旅伴箭的颜色。与商店里旅伴卡片的强调色同一个青绿：玩家是暖黄的箭，旅伴是冷色的箭，
+        /// 旅伴箭的颜色。与旅伴卡片的强调色同一个青绿：玩家是暖黄的箭，旅伴是冷色的箭，
         /// 混战时不用数数量就知道这一发是谁打出去的。
         /// </summary>
         public static readonly Color CompanionTint = new Color(0.45f, 0.88f, 0.78f);
 
-        /// <summary>旅伴箭相对玩家箭的尺寸倍数。颜色之外再压一档大小，色弱时也能分。</summary>
-        public const float CompanionScale = 0.8f;
+        /// <summary>旅伴箭相对玩家箭的尺寸倍数。与 WeaponVisualStyle.CompanionScale 对齐，
+        /// 让“弓上摘下来的搭箭”在交接后不会被投射物池改大/改小。</summary>
+        public const float CompanionScale = 0.5f;
 
         /// <summary>
-        /// 一个投射物来源。OwnerKey 是"谁的"的唯一编号：0 是玩家，槽位号 + 1 是旅伴
-        /// （槽位号来自 CompanionModel.Slot，与 CompanionSystem.UnitIdOf 的编码差 1，
-        /// 这里不用 UnitId 是为了不把视图的字典键和伤害归属的 id 搅在一起）。
+        /// 一个投射物来源。OwnerKey 只用于视图池的字典键：0 是玩家，槽位号 + 1 是旅伴。
+        /// 它与伤害归属的 UnitId 是两套编号，故意不复用，避免视图缓存被实体 ID 的分配策略绑住。
         /// </summary>
         public readonly struct Source
         {

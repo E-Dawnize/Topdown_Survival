@@ -16,7 +16,6 @@ namespace Game.Views
         readonly List<Action> _unsubscribers = new List<Action>(4);
 
         protected IEventBus Bus { get; private set; }
-        public bool IsInitialized => Bus != null;
 
         public void Initialize(IEventBus bus)
         {

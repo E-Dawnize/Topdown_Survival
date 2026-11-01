@@ -1,6 +1,7 @@
 using Game.Config;
 using Game.Model;
 using Game.Systems;
+using Game.Systems.Weapons;
 using UnityEngine;
 
 namespace Game.Views
@@ -39,6 +40,7 @@ namespace Game.Views
                 Debug.LogError("[CompanionViewPool] 找不到可复用的共享材质，旅伴不会显示。" +
                                "玩家预制体得有一个 Renderer 带材质");
             }
+
         }
 
         /// <summary>一个渲染帧同步一次。alpha 由 RunLoop 按累加器余量算，与敌人、投射物同一个值。</summary>
@@ -60,39 +62,45 @@ namespace Game.Views
 
                 CompanionView view = _views[slot];
 
-                // 槽位被下一个旅伴复用了（阵营可能不同）：重新上色并吸附到它的位置，不沿用上一个的
-                if (view != null && !ReferenceEquals(view.Companion, companion))
+                // 槽位被下一个旅伴复用了（阵营可能不同）：重新上色并吸附到它的位置，不沿用上一个的。
+                // 同一个人重新入队时 ReferenceEquals 为真，但实例可能因为离队被 SetActive(false) 过，
+                // 所以激活要放在引用比较之外。
+                if (view != null)
                 {
-                    view.gameObject.SetActive(true);
-                    view.Bind(companion);
+                    if (!view.gameObject.activeSelf) view.gameObject.SetActive(true);
+                    if (!ReferenceEquals(view.Companion, companion)) view.Bind(companion);
                 }
 
                 if (view == null) view = Create(slot, companion);
                 if (view == null) continue;
 
+                // 每帧对一下武器：同一个人升级武器还是同一个 WeaponModel，SetWeapon 直接返回；
+                // 真换了武器（以后旅伴进化）才会重建模型。只在 Bind 时对一次的话，换刀不会显示出来。
+                BindWeapon(view, slot);
                 view.Sync(alpha);
             }
         }
 
         CompanionView Create(int slot, CompanionModel companion)
         {
-            GameObject instance = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            instance.name = "Companion_" + slot;
-            instance.transform.SetParent(_parent, false);
-            instance.transform.localScale = CompanionViewStyle.BodyScale;
-            instance.transform.position = new Vector3(companion.Position.x, CompanionViewStyle.BodyCenterHeight,
-                companion.Position.y);
-
-            // 纯表现物件：自带 Collider 只会让物理系统白算
-            Collider collider = instance.GetComponent<Collider>();
-            if (collider != null) Object.Destroy(collider);
-
-            CompanionView view = instance.AddComponent<CompanionView>();
-            view.Initialize(_sharedMaterial);
+            // 先摆好缩放再 Initialize：武器锚点按最终缩放反算，顺序反了第一帧武器会被压扁。
+            CompanionView view = PrimitiveViewFactory.Create<CompanionView>("Companion_" + slot,
+                PrimitiveType.Capsule, _parent, _sharedMaterial, place =>
+                {
+                    place.localScale = CompanionViewStyle.BodyScale;
+                    place.position = new Vector3(companion.Position.x, CompanionViewStyle.BodyCenterHeight,
+                        companion.Position.y);
+                });
             view.Bind(companion);
 
             _views[slot] = view;
             return view;
+        }
+
+        void BindWeapon(CompanionView view, int slot)
+        {
+            WeaponSystem weapons = _companions.WeaponsOf(slot);
+            view.SetWeapon(weapons != null && weapons.Count > 0 ? weapons.Weapons[0] : null);
         }
     }
 }

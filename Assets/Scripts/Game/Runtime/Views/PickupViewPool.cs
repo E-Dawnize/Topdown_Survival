@@ -8,19 +8,19 @@ namespace Game.Views
     /// 掉落物的显示池。按 PickupSystem 的池槽位号存实例（槽位在一枚掉落物的生命周期里不变），
     /// 做法与 ProjectileViewPool 一致：一个共享材质 + 每个实例一份 MaterialPropertyBlock。
     ///
-    /// 金币与心共用一个实例池：槽位会被下一枚掉落的另一种掉落物复用，
+    /// 经验与心共用一个实例池：槽位会被下一枚掉落的另一种掉落物复用，
     /// 所以外形（形状 / 颜色 / 离地高度）在每次取出时按种类换，而不是每种建一套池子。
     /// </summary>
     public sealed class PickupViewPool
     {
         /// <summary>
-        /// 金币的外形：压扁的球，离地 0.32 米。掉落物原点在中心，抬高才浮在地面上方，
-        /// 压扁才在俯视斜角下看得出是枚躺着的硬币而不是一颗珠子。
+        /// 经验的外形：细长的青色晶体（压扁的球），离地 0.32 米。
+        /// 颜色与敌人/心都拉开，满屏掉落时一眼能看出"这是经验"。
         /// </summary>
-        static readonly PickupView.Look CoinLook = new PickupView.Look(
-            new Vector3(0.34f, 0.07f, 0.34f), 0.32f, new Color(1f, 0.82f, 0.25f));
+        static readonly PickupView.Look ExperienceLook = new PickupView.Look(
+            new Vector3(0.26f, 0.10f, 0.26f), 0.32f, new Color(0.35f, 0.95f, 0.85f));
 
-        /// <summary>心的外形：圆球，比金币高一点（心更重要，也更显眼）。</summary>
+        /// <summary>心的外形：圆球，比经验晶体高一点（心更重要，也更显眼）。</summary>
         static readonly PickupView.Look HeartLook = new PickupView.Look(
             new Vector3(0.30f, 0.30f, 0.30f), 0.5f, new Color(0.95f, 0.28f, 0.35f));
 
@@ -42,7 +42,7 @@ namespace Game.Views
 
             if (_sharedMaterial == null)
             {
-                Debug.LogError("[PickupViewPool] 找不到可复用的共享材质，金币与心不会显示。" +
+                Debug.LogError("[PickupViewPool] 找不到可复用的共享材质，经验与心不会显示。" +
                                "玩家预制体得有一个 Renderer 带材质");
             }
         }
@@ -62,7 +62,7 @@ namespace Game.Views
                 PickupView view = Rent(pickup.Slot);
                 if (view == null) continue;
 
-                view.Apply(pickup.Kind == PickupKind.Heart ? HeartLook : CoinLook);
+                view.Apply(pickup.Kind == PickupKind.Heart ? HeartLook : ExperienceLook);
                 view.Sync(pickup.Position, pickup.Magnetized);
                 _visible[pickup.Slot] = true;
             }
@@ -85,17 +85,8 @@ namespace Game.Views
                 return view;
             }
 
-            // 一个球体就够：金币与心的差别靠压扁与颜色，不必为两种掉落物各建一套预制体
-            GameObject instance = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            instance.name = "Pickup";
-            instance.transform.SetParent(_parent, false);
-
-            // 纯表现物件：自带 Collider 只会让物理系统白算
-            Collider collider = instance.GetComponent<Collider>();
-            if (collider != null) Object.Destroy(collider);
-
-            view = instance.AddComponent<PickupView>();
-            view.Initialize(_sharedMaterial);
+            // 一个球体就够：经验与心的差别靠压扁与颜色，不必为两种掉落物各建一套预制体
+            view = PrimitiveViewFactory.Create<PickupView>("Pickup", PrimitiveType.Sphere, _parent, _sharedMaterial);
             _views[slot] = view;
             return view;
         }
