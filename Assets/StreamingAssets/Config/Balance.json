@@ -51,7 +51,7 @@
   },
   {
     "Id": "HeartDropChance",
-    "Value": 0.12,
+    "Value": 0.09,
     "Note": "击杀掉心概率"
   },
   {
@@ -113,5 +113,10 @@
     "Id": "LuckRarityWeight",
     "Value": 0.01,
     "Note": "每点幸运增加的稀有度上浮"
+  },
+  {
+    "Id": "ExperienceCollectCooldown",
+    "Value": 12.0,
+    "Note": "全屏吸取经验冷却 秒"
   }
 ]

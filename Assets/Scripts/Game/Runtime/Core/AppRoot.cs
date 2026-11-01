@@ -164,6 +164,7 @@ namespace Game.Core
             EnemyProjectileViews?.Dispose();
             CombatEffectsView?.Bind(null);
             CombatEffects.Clear();
+            DamageNumbers.Clear();
             _composition?.Events.Clear();
             _composition = null;
             Instance = null;

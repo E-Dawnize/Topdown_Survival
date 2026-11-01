@@ -22,6 +22,9 @@ namespace Game.Views
         static Material _material;
         static int _next;
 
+        /// <summary>进度条/血条等其它世界空间线条复用的材质（与攻击特效同一张无光照材质）。</summary>
+        internal static Material LineMaterial => SharedMaterial();
+
         /// <summary>
         /// 画一个扇形挥砍。delay 让弧线在伤害窗口开始时才出现，duration 是可见时长。
         /// </summary>

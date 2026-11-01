@@ -189,13 +189,18 @@ namespace Game.Views
 
         void OnUnitDamaged(UnitDamaged e)
         {
-            if (!e.Target.IsValid) return;
+            if (!e.Target.IsValid || e.Amount <= 0f) return;
 
             // 事件带的是稳定 UnitId；槽位只用于本池的实例索引，不能再用 id.Value - 1 反推。
             if (_enemies.TryGetSlot(e.Target, out int slot) && _views.TryGetValue(slot, out UnitView view))
             {
                 view.Flash();
             }
+
+            // 飘字用事件里自带的命中位置：清阶段可能已经把尸体移除，槽位查不到时照样能显示。
+            EnemyModel enemy = _enemies.Get(slot);
+            float height = enemy != null ? 0.70f * enemy.VisualScale + 0.80f : 1.0f;
+            DamageNumbers.Show(new Vector3(e.X, height, e.Z), e.Amount, e.IsCrit);
         }
 
         /// <summary>

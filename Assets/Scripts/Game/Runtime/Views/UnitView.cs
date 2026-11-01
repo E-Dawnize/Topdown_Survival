@@ -30,6 +30,9 @@ namespace Game.Views
         // 脚下阴影盘。挂在实例下当子节点，位置随父节点跟走，Sync 里不需要碰它
         Transform _shadow;
 
+        // 头顶血条。挂在实例下，但线本身用世界坐标；父节点缩放在 Attach 后用反算抵消。
+        EnemyHealthBar _healthBar;
+
         // 预制体自己的缩放（Crawler / Charger 是 0.7）。精英与 BOSS 在本值上再乘 VisualScale，
         // 不能直接写 1，否则第一次绑定就把预制体的尺寸改了。
         Vector3 _baseScale = Vector3.one;
@@ -60,6 +63,7 @@ namespace Game.Views
             _baseScale = transform.localScale;
             _renderer = GetComponentInChildren<Renderer>();
             _mpb = new MaterialPropertyBlock();
+            _healthBar = EnemyHealthBar.Attach(transform);
 
             if (_renderer != null && _renderer.sharedMaterial != null &&
                 _renderer.sharedMaterial.HasProperty(BaseColorId))
@@ -82,6 +86,7 @@ namespace Game.Views
 
             _boundScale = _baseScale * enemy.VisualScale;
             transform.localScale = _boundScale;
+            _healthBar?.Bind(enemy, _boundScale);
             transform.position = new Vector3(enemy.Position.x, transform.position.y, enemy.Position.y);
             ApplyColor(_tint);
 
@@ -148,6 +153,12 @@ namespace Game.Views
             }
 
             ApplyAttackPose();
+
+            if (_healthBar != null)
+            {
+                float height = transform.position.y + _boundScale.y * 0.55f + 0.18f;
+                _healthBar.Refresh(new Vector3(position.x, height, position.y));
+            }
 
             if (_flash > 0f)
             {

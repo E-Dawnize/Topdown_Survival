@@ -14,11 +14,17 @@ namespace Game.Views
     public sealed class PickupViewPool
     {
         /// <summary>
-        /// 经验的外形：细长的青色晶体（压扁的球），离地 0.32 米。
-        /// 颜色与敌人/心都拉开，满屏掉落时一眼能看出"这是经验"。
+        /// 经验球按品阶换颜色与大小：普通怪是青色小晶体，高阶怪依次变成蓝/紫/橙，
+        /// 精英是金色，BOSS 是最大的金红色球。数值仍由 Enemy.XpValue 决定，颜色只负责“这一球值多少”的可读性。
         /// </summary>
-        static readonly PickupView.Look ExperienceLook = new PickupView.Look(
-            new Vector3(0.26f, 0.10f, 0.26f), 0.32f, new Color(0.35f, 0.95f, 0.85f));
+        static readonly PickupView.Look[] ExperienceLooks =
+        {
+            new PickupView.Look(new Vector3(0.26f, 0.10f, 0.26f), 0.32f, new Color(0.35f, 0.95f, 0.85f)),
+            new PickupView.Look(new Vector3(0.30f, 0.12f, 0.30f), 0.34f, new Color(0.35f, 0.70f, 1.00f)),
+            new PickupView.Look(new Vector3(0.35f, 0.14f, 0.35f), 0.37f, new Color(0.72f, 0.45f, 1.00f)),
+            new PickupView.Look(new Vector3(0.42f, 0.17f, 0.42f), 0.40f, new Color(1.00f, 0.70f, 0.22f)),
+            new PickupView.Look(new Vector3(0.54f, 0.22f, 0.54f), 0.46f, new Color(1.00f, 0.86f, 0.28f))
+        };
 
         /// <summary>心的外形：圆球，比经验晶体高一点（心更重要，也更显眼）。</summary>
         static readonly PickupView.Look HeartLook = new PickupView.Look(
@@ -62,7 +68,10 @@ namespace Game.Views
                 PickupView view = Rent(pickup.Slot);
                 if (view == null) continue;
 
-                view.Apply(pickup.Kind == PickupKind.Heart ? HeartLook : ExperienceLook);
+                PickupView.Look look = pickup.Kind == PickupKind.Heart
+                    ? HeartLook
+                    : ExperienceLooks[TierIndex(pickup.Tier)];
+                view.Apply(look);
                 view.Sync(pickup.Position, pickup.Magnetized);
                 _visible[pickup.Slot] = true;
             }
@@ -74,6 +83,11 @@ namespace Game.Views
                 if (view == null || _visible[slot]) continue;
                 if (view.gameObject.activeSelf) view.gameObject.SetActive(false);
             }
+        }
+
+        static int TierIndex(PickupTier tier)
+        {
+            return Mathf.Clamp((int)tier - 1, 0, ExperienceLooks.Length - 1);
         }
 
         PickupView Rent(int slot)

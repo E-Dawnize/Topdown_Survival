@@ -16,12 +16,13 @@ namespace Game.Tests
             int xpToNext = 10, int secondsLeft = 30, int threat = 2, int kills = 7, int alive = 5, int dash = 0,
             float dashRatio = 1f, int weapons = 2, int weaponSlots = 4, int companions = 1,
             int companionSlots = 4, int combos = 0, bool boss = false, float bossHp = 0f,
-            string bossName = "", bool bossEnraged = false, bool frozen = false, int buildRevision = 0)
+            string bossName = "", bool bossEnraged = false, bool frozen = false, int buildRevision = 0,
+            int collect = 0, float collectRatio = 1f)
         {
             return new HudValues(hp, maxHp, maxHp > 0 ? (float)hp / maxHp : 0f, hasPlayer, level, xp, xpToNext,
                 xpToNext > 0 ? (float)xp / xpToNext : 0f, secondsLeft, threat, kills, alive, dash, dashRatio,
                 weapons, weaponSlots, companions, companionSlots, combos, boss, bossHp, bossName, bossEnraged,
-                frozen, buildRevision);
+                frozen, buildRevision, collect, collectRatio);
         }
 
         [Test]
@@ -46,6 +47,8 @@ namespace Game.Tests
             Assert.AreEqual(HudField.RunTime, Snapshot(threat: 3).Diff(baseline), "威胁");
             Assert.AreEqual(HudField.Dash, Snapshot(dash: 18, dashRatio: 0.1f).Diff(baseline), "冲刺冷却");
             Assert.AreEqual(HudField.Dash, Snapshot(dashRatio: 0.5f).Diff(baseline), "冲刺进度条");
+            Assert.AreEqual(HudField.Collect, Snapshot(collect: 18, collectRatio: 0.1f).Diff(baseline),
+                "全屏吸取冷却");
             Assert.AreEqual(HudField.AliveEnemies, Snapshot(alive: 6).Diff(baseline), "存活敌人");
             Assert.AreEqual(HudField.Kills, Snapshot(kills: 8).Diff(baseline), "击杀");
             Assert.AreEqual(HudField.Build, Snapshot(weapons: 3).Diff(baseline), "武器数");

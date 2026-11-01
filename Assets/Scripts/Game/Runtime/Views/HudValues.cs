@@ -19,7 +19,8 @@ namespace Game.Views
         Kills = 1 << 5,
         Build = 1 << 6,
         Boss = 1 << 7,
-        All = Hp | Progress | RunTime | Dash | AliveEnemies | Kills | Build | Boss
+        Collect = 1 << 8,
+        All = Hp | Progress | RunTime | Dash | AliveEnemies | Kills | Build | Boss | Collect
     }
 
     /// <summary>
@@ -56,6 +57,12 @@ namespace Game.Views
         /// <summary>冲刺冷却进度：1 = 就绪，0 = 刚按下。没有玩家时为 0（条是空的）。</summary>
         public readonly float DashRatio;
 
+        /// <summary>全屏吸取的冷却剩余，向上取整到 0.1 秒。0 表示就绪。</summary>
+        public readonly int CollectTenths;
+
+        /// <summary>全屏吸取冷却进度：1 = 就绪，0 = 刚使用。</summary>
+        public readonly float CollectRatio;
+
         public readonly int Weapons;
         public readonly int WeaponSlots;
         public readonly int Companions;
@@ -87,7 +94,7 @@ namespace Game.Views
             int dashTenths, float dashRatio,
             int weapons, int weaponSlots, int companions, int companionSlots, int combos,
             bool bossActive, float bossHpRatio, string bossName, bool bossEnraged,
-            bool frozen, int buildRevision = 0)
+            bool frozen, int buildRevision = 0, int collectTenths = 0, float collectRatio = 0f)
         {
             Hp = hp;
             MaxHp = maxHp;
@@ -106,6 +113,8 @@ namespace Game.Views
 
             DashTenths = dashTenths;
             DashRatio = dashRatio;
+            CollectTenths = collectTenths;
+            CollectRatio = collectRatio;
 
             Weapons = weapons;
             WeaponSlots = weaponSlots;
@@ -135,6 +144,12 @@ namespace Game.Views
                 ? (dashCooldown > 0f ? Clamp01(1f - dashTimer / dashCooldown) : 1f)
                 : 0f;
 
+            float collectCooldown = hasPlayer ? player.ExperienceCollectCooldown : 0f;
+            float collectTimer = hasPlayer ? player.ExperienceCollectTimer : 0f;
+            float collectRatio = hasPlayer
+                ? (collectCooldown > 0f ? Clamp01(1f - collectTimer / collectCooldown) : 1f)
+                : 0f;
+
             return new HudValues(
                 hp: (int)Math.Ceiling(hp),
                 maxHp: (int)Math.Ceiling(maxHp),
@@ -150,6 +165,8 @@ namespace Game.Views
                 aliveEnemies: enemies != null ? enemies.AliveCount : 0,
                 dashTenths: dashTimer > 0f ? (int)Math.Ceiling(dashTimer * 10f) : 0,
                 dashRatio: dashRatio,
+                collectTenths: collectTimer > 0f ? (int)Math.Ceiling(collectTimer * 10f) : 0,
+                collectRatio: collectRatio,
                 weapons: build != null ? build.WeaponCount : 0,
                 weaponSlots: build != null ? build.WeaponSlots : 4,
                 companions: build != null ? build.CompanionCount : 0,
@@ -201,6 +218,11 @@ namespace Game.Views
             if (DashTenths != previous.DashTenths || !DashRatio.Equals(previous.DashRatio))
             {
                 changed |= HudField.Dash;
+            }
+
+            if (CollectTenths != previous.CollectTenths || !CollectRatio.Equals(previous.CollectRatio))
+            {
+                changed |= HudField.Collect;
             }
 
             if (AliveEnemies != previous.AliveEnemies) changed |= HudField.AliveEnemies;

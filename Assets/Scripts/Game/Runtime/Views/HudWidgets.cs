@@ -26,6 +26,9 @@ namespace Game.Views
         static readonly Color EquipmentBackColor = new Color(0.05f, 0.06f, 0.08f, 0.55f);
         static readonly Color EquipmentColor = new Color(0.82f, 0.86f, 0.93f, 1f);
         static readonly Color DamageColor = new Color(1f, 0.42f, 0.36f, 0f);
+        static readonly Color CollectBackColor = new Color(0.08f, 0.09f, 0.11f, 0.85f);
+        static readonly Color CollectFillColor = new Color(0.35f, 0.85f, 1f, 1f);
+        static readonly Color CollectReadyColor = new Color(0.55f, 0.92f, 1f, 1f);
         static readonly Vector2 TopCenter = new Vector2(0.5f, 1f);
         static readonly Vector2 TopLeft = new Vector2(0f, 1f);
 
@@ -35,6 +38,8 @@ namespace Game.Views
         public Text ThreatText;
         public Image DashFill;
         public Text DashText;
+        public Image CollectFill;
+        public Text CollectText;
         public GameObject HintBackdrop;
         public Text HintText;
 
@@ -82,6 +87,7 @@ namespace Game.Views
             widgets.BuildEquipmentPanel(root);
             widgets.BuildDamageText(root);
             widgets.BuildXpBar(root);
+            widgets.BuildCollectBar(root);
             widgets.BuildBossBar(root);
 
             // 预制体里写的字体是内置 LegacyRuntime（没有中文字形），运行时统一换成系统字体。
@@ -139,6 +145,22 @@ namespace Game.Views
                 DamageColor);
             UiFactory.PlaceTopLeft(DamageText.rectTransform, new Vector2(358f, -20f), new Vector2(180f, 28f));
             DamageText.enabled = false;
+        }
+
+        /// <summary>
+        /// 全屏吸取的冷却条：右下角、冲刺条上方。文字直接写“E 全屏吸取”，
+        /// 玩家不用去猜这个功能绑在哪个键上。
+        /// </summary>
+        void BuildCollectBar(Transform root)
+        {
+            UiFactory.Bar bar = UiFactory.CreateBar(root, "CollectBack", "CollectFill", new Vector2(1f, 0f),
+                new Vector2(-24f, 84f), new Vector2(220f, 44f), CollectBackColor, CollectFillColor,
+                new Vector2(1f, 0f));
+            CollectFill = bar.Fill;
+
+            CollectText = UiFactory.CreateText(bar.Back.transform, "CollectText", "E 全屏吸取", 16,
+                TextAnchor.MiddleCenter, CollectReadyColor);
+            UiFactory.PlaceCentered(CollectText.rectTransform, Vector2.zero, new Vector2(210f, 24f));
         }
 
         /// <summary>BOSS 条：顶部中间，状态行下方。隐藏时不占画面。</summary>

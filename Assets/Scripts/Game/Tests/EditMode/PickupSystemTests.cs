@@ -187,7 +187,7 @@ namespace Game.Tests
         {
             const int DropsPerRound = 300;
             const int Rounds = 10;
-            const float Expected = 0.12f;
+            const float Expected = 0.09f;
 
             int hearts = 0;
             const int TotalDrops = Rounds * DropsPerRound;
@@ -213,8 +213,58 @@ namespace Game.Tests
 
             float rate = (float)hearts / TotalDrops;
             TestContext.Progress.WriteLine("[掉落] " + TotalDrops + " 次掉落里 " + hearts + " 颗心 = " +
-                                          (rate * 100f).ToString("0.00") + "%（目标 12%）");
+                                          (rate * 100f).ToString("0.00") + "%（目标 9%）");
             Assert.LessOrEqual(Mathf.Abs(rate - Expected), 0.03f);
+        }
+
+        [Test]
+        public void CollectAllExperienceTakesEveryOrbButLeavesHearts()
+        {
+            PickupSystem pickups = Build(out _, out RunState run, out _, heartRoll: 0f);
+
+            pickups.DropEnemyLoot(new Vector2(100f, 0f), 5);
+            pickups.DropEnemyLoot(new Vector2(-50f, 0f), 3);
+            Assert.AreEqual(4, pickups.Count, "两枚经验 + 两颗心");
+
+            int collected = pickups.CollectAllExperience(out int totalExperience);
+
+            Assert.AreEqual(2, collected);
+            Assert.AreEqual(8, totalExperience);
+            Assert.AreEqual(8, run.TotalXp, "全屏吸取要把经验直接结算进 RunState");
+            Assert.AreEqual(2, pickups.Count, "心不能被全屏吸取带走，仍在地上");
+
+            for (int i = 0; i < pickups.Count; i++)
+            {
+                Assert.IsTrue(pickups.TryGetActive(i, out PickupSystem.Snapshot snapshot));
+                Assert.AreEqual(PickupKind.Heart, snapshot.Kind);
+            }
+        }
+
+        [Test]
+        public void ExperienceTierFollowsEnemyQuality()
+        {
+            Assert.AreEqual(PickupTier.Common, PickupSystem.TierOf(NewEnemy(TierDef(1))));
+            Assert.AreEqual(PickupTier.Uncommon, PickupSystem.TierOf(NewEnemy(TierDef(2))));
+            Assert.AreEqual(PickupTier.Rare, PickupSystem.TierOf(NewEnemy(TierDef(4))));
+            Assert.AreEqual(PickupTier.Elite, PickupSystem.TierOf(NewEnemy(TierDef(3),
+                new EnemySpawnOptions(1f, 1f, 1f, 1.35f, 4f, true, false))));
+            Assert.AreEqual(PickupTier.Boss, PickupSystem.TierOf(NewEnemy(TierDef(9),
+                new EnemySpawnOptions(1f, 1f, 1f, 1f, 1f, false, true))));
+        }
+
+        static EnemyDef TierDef(int tier)
+        {
+            return new EnemyDef
+            {
+                Id = "tier_" + tier, Name = "品阶靶", Behaviour = EnemyBehaviourType.Chase, Tier = tier,
+                HP = 1f, Damage = 0f, Speed = 0f, AttackRange = 1f, AttackInterval = 1f,
+                XpValue = tier, BodyRadius = 0.3f, Scale = 1f
+            };
+        }
+
+        static EnemyModel NewEnemy(EnemyDef def, EnemySpawnOptions? options = null)
+        {
+            return new EnemyModel(def, Vector2.zero, new UnitId(100), options ?? EnemySpawnOptions.Default);
         }
 
         [Test]
@@ -241,7 +291,7 @@ namespace Game.Tests
             bus = new EventBus();
             player = new PlayerModel(100f, 5f, 15f, 0.15f, 2f, 67f);
             run = TestContent.NewRun();
-            return new PickupSystem(player, run, bus, new FixedRandom(heartRoll), 0.12f, heartHeal);
+            return new PickupSystem(player, run, bus, new FixedRandom(heartRoll), 0.09f, heartHeal);
         }
 
         static void Advance(PickupSystem pickups, int steps)

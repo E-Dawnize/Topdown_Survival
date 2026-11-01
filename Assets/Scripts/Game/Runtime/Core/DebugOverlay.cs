@@ -132,7 +132,8 @@ namespace Game.Core
                     Vector2 move = input.MoveAxis;
                     _sb.Append("Move (").Append(move.x.ToString("0.00")).Append(", ")
                         .Append(move.y.ToString("0.00")).Append(")   Dash ")
-                        .Append(input.DashPressed ? "按下" : "—");
+                        .Append(input.DashPressed ? "按下" : "—")
+                        .Append("   Collect ").Append(input.CollectPressed ? "按下" : "—");
                 }
             }
             else

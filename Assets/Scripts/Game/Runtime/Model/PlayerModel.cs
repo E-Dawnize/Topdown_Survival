@@ -32,6 +32,9 @@ namespace Game.Model
         /// <summary>拾取范围，GDD 5.1：经验与心的吸附半径 2.5 米。写在 StatBlock 里，拾取道具与 buff 才能改它。</summary>
         const float DefaultPickupRadius = 2.5f;
 
+        /// <summary>全屏吸取没有配置时的兜底冷却（秒）。正式装配从 Balance.json 读 ExperienceCollectCooldown。</summary>
+        public const float DefaultExperienceCollectCooldown = 12f;
+
         public Vector2 Position;
         public Vector2 Velocity;
         public Vector2 DashDirection;
@@ -47,16 +50,23 @@ namespace Game.Model
         public readonly float DashSpeed;
         public readonly float DashDuration;
         public readonly float DashCooldown;
+        public readonly float ExperienceCollectCooldown;
         public readonly float ArenaHalfExtent;
 
         public float DashTimer;
         public float DashCooldownTimer;
 
+        /// <summary>
+        /// 全屏吸取经验（E/RB）的剩余冷却。为 0 时才能再次使用；
+        /// 只有真的吸到经验才进入冷却，屏幕上没经验球时按了不会白白浪费一次。
+        /// </summary>
+        public float ExperienceCollectTimer;
+
         /// <summary>碰撞伤害的结算冷却。RunSimulation 每步推进，0.5 秒对贴身敌人结算一次。</summary>
         public float ContactTimer;
 
         public PlayerModel(float maxHp, float moveSpeed, float dashSpeed, float dashDuration, float dashCooldown,
-            float arenaHalfExtent)
+            float arenaHalfExtent, float experienceCollectCooldown = DefaultExperienceCollectCooldown)
         {
             Stats = new StatBlock();
             Stats.SetBase(StatType.MaxHP, maxHp);
@@ -71,6 +81,9 @@ namespace Game.Model
             DashSpeed = dashSpeed;
             DashDuration = dashDuration;
             DashCooldown = dashCooldown;
+            ExperienceCollectCooldown = experienceCollectCooldown > 0.01f
+                ? experienceCollectCooldown
+                : DefaultExperienceCollectCooldown;
             ArenaHalfExtent = arenaHalfExtent;
         }
 
@@ -87,5 +100,7 @@ namespace Game.Model
         public bool IsDashing => DashTimer > 0f;
         public bool IsInvulnerable => DashTimer > 0f;
         public bool CanDash => DashCooldownTimer <= 0f && DashTimer <= 0f;
+
+        public bool CanCollectExperience => ExperienceCollectTimer <= 0f;
     }
 }

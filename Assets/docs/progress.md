@@ -3,6 +3,21 @@
 
 > 下面 I0 / I1 / I2 的记录保留当时进度。I2 之后当前工作区又做了一轮 P0/P1 修复与 v0.3 玩法重做；v0.3 见第一节，当前测试数为 227（222 EditMode + 5 PlayMode：相机装配、武器动作）。
 
+## v0.4 掉落品阶、全屏吸取与战斗飘字
+
+状态：代码与自动化验证完成；主工程 Unity Play 的观感仍未手测。
+
+| 任务 | 状态 | 证据 |
+|---|---|---|
+| 回血掉落率 | 完成 | Balance `HeartDropChance` 12%→9%；xlsx 与导出 JSON 同步；掉落概率测试按 9% 重跑 |
+| 经验球品阶 | 完成 | `PickupTier` 由敌人 Tier/精英/BOSS 推导；`PickupViewPool` 五种颜色/大小；经验值仍取 Enemy.XpValue（精英 ×4） |
+| 全屏吸取 | 完成 | E/RB 输入、12 秒冷却（Balance `ExperienceCollectCooldown`）、`PickupSystem.CollectAllExperience` 只吸经验；右下 HUD 冷却条 + 扩散环 + 提示 |
+| 怪物血条 | 完成 | `EnemyHealthBar` 两条世界空间 LineRenderer；掉血后显示，精英/BOSS/Tier 4+ 常显 |
+| 伤害飘字 | 完成 | `DamageNumbers` 世界 TextMesh 池；普通/暴击/玩家受击三种颜色与字号，暴击带“暴击”前缀 |
+| 测试 | 完成 | EditMode 222→226；PlayMode 5→7（血条显隐、飘字普通/暴击文本） |
+
+验证：独立工程副本 Unity 2022.3.34f1c1 批量模式 EditMode 226/226、PlayMode 7/7；`dotnet build` Runtime 与测试工程 0 错 0 警告。
+
 ## v0.3.4 攻击可见与 HUD 装备栏
 
 状态：代码与自动化验证完成；主工程 Unity Play 的整条流程与观感仍未手测。

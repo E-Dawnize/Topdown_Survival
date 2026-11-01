@@ -14,6 +14,19 @@ namespace Game.Systems
     }
 
     /// <summary>
+    /// 经验球的品阶。只由掉落时敌人的品阶/精英/BOSS 决定，用来区分颜色与大小；
+    /// 具体加多少经验仍读 EnemyModel.XpValue，不在表现层再乘一次。
+    /// </summary>
+    public enum PickupTier
+    {
+        Common = 1,
+        Uncommon = 2,
+        Rare = 3,
+        Elite = 4,
+        Boss = 5
+    }
+
+    /// <summary>
     /// 掉落物：经验与心。敌人死在清理阶段时由 RunSimulation 调 DropEnemyLoot 生成，
     /// 之后每一步由 Tick 推进"静止 → 磁吸 → 结算"。
     ///
@@ -33,6 +46,7 @@ namespace Game.Systems
         struct Slot
         {
             public PickupKind Kind;
+            public PickupTier Tier;
             public int Value;
             public float Heal;
             public Vector2 Position;
@@ -49,14 +63,16 @@ namespace Game.Systems
             /// </summary>
             public readonly int Slot;
             public readonly PickupKind Kind;
+            public readonly PickupTier Tier;
             public readonly Vector2 Position;
             public readonly bool Magnetized;
             public readonly int Value;
 
-            public Snapshot(int slot, PickupKind kind, Vector2 position, bool magnetized, int value)
+            public Snapshot(int slot, PickupKind kind, PickupTier tier, Vector2 position, bool magnetized, int value)
             {
                 Slot = slot;
                 Kind = kind;
+                Tier = tier;
                 Position = position;
                 Magnetized = magnetized;
                 Value = value;
@@ -75,7 +91,7 @@ namespace Game.Systems
         int _nextSerial = 1;
 
         public PickupSystem(PlayerModel player, RunState run, IEventBus events, IRandom01 random,
-            float heartDropChance = 0.12f, float heartHeal = 8f)
+            float heartDropChance = 0.09f, float heartHeal = 8f)
         {
             _player = player ?? throw new System.ArgumentNullException(nameof(player));
             _run = run ?? throw new System.ArgumentNullException(nameof(run));
@@ -98,7 +114,7 @@ namespace Game.Systems
             }
 
             Slot slot = _slots[ordinal];
-            snapshot = new Snapshot(ordinal, slot.Kind, slot.Position, slot.Magnetized, slot.Value);
+            snapshot = new Snapshot(ordinal, slot.Kind, slot.Tier, slot.Position, slot.Magnetized, slot.Value);
             return true;
         }
 
@@ -108,12 +124,59 @@ namespace Game.Systems
         /// </summary>
         public void DropEnemyLoot(Vector2 position, int experience)
         {
-            if (experience > 0) Spawn(PickupKind.Experience, experience, 0f, position);
+            DropEnemyLoot(position, experience, PickupTier.Common);
+        }
+
+        /// <summary>
+        /// 带品阶的掉落。经验球的颜色/大小由 tier 决定，数量仍由敌人的 XpValue 决定；
+        /// 心不吃 tier，统一红色圆球。
+        /// </summary>
+        public void DropEnemyLoot(Vector2 position, int experience, PickupTier tier)
+        {
+            if (experience > 0) Spawn(PickupKind.Experience, tier, experience, 0f, position);
 
             if (_random.Next01() < _heartDropChance)
             {
-                Spawn(PickupKind.Heart, 0, _heartHeal, position);
+                Spawn(PickupKind.Heart, PickupTier.Common, 0, _heartHeal, position);
             }
+        }
+
+        /// <summary>
+        /// 全屏吸取：把所有经验球立刻结算，心保持原地。
+        /// 返回吸走的枚数，totalExperience 是这些球加起来的经验值；HUD/特效用它做反馈。
+        /// 只有真的吸到东西才应该进冷却，所以枚数为 0 时不改玩家状态。
+        /// </summary>
+        public int CollectAllExperience(out int totalExperience)
+        {
+            totalExperience = 0;
+            int collected = 0;
+
+            for (int i = _count - 1; i >= 0; i--)
+            {
+                ref Slot slot = ref _slots[i];
+                if (slot.Kind != PickupKind.Experience) continue;
+
+                totalExperience += slot.Value;
+                collected++;
+                Collect(in slot);
+                RemoveAt(i);
+            }
+
+            return collected;
+        }
+
+        /// <summary>
+        /// 敌人品阶 → 经验球品阶。普通怪按 Tier 分三档，精英与 BOSS 各占一档；
+        /// 这里只改外观，不乘经验值（XpValue 已经在 EnemyModel 里含精英倍率）。
+        /// </summary>
+        public static PickupTier TierOf(EnemyModel enemy)
+        {
+            if (enemy == null) return PickupTier.Common;
+            if (enemy.IsBoss) return PickupTier.Boss;
+            if (enemy.IsElite) return PickupTier.Elite;
+            if (enemy.Def.Tier >= 4) return PickupTier.Rare;
+            if (enemy.Def.Tier >= 2) return PickupTier.Uncommon;
+            return PickupTier.Common;
         }
 
         /// <summary>
@@ -150,7 +213,7 @@ namespace Game.Systems
             }
         }
 
-        void Spawn(PickupKind kind, int value, float heal, Vector2 position)
+        void Spawn(PickupKind kind, PickupTier tier, int value, float heal, Vector2 position)
         {
             int index;
             if (_count < _slots.Length)
@@ -165,6 +228,7 @@ namespace Game.Systems
 
             ref Slot slot = ref _slots[index];
             slot.Kind = kind;
+            slot.Tier = tier;
             slot.Value = value;
             slot.Heal = heal;
             slot.Position = position;

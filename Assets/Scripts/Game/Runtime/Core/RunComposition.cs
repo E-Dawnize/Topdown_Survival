@@ -59,9 +59,11 @@ namespace Game.Core
             float dashDuration = config.GetBalance("DashDuration", 0.15f);
             float dashCooldown = config.GetBalance("DashCooldown", 2f);
             float maxHp = playerMaxHp ?? character.BaseHP;
+            float collectCooldown = config.GetBalance("ExperienceCollectCooldown",
+                PlayerModel.DefaultExperienceCollectCooldown);
 
             Player = new PlayerModel(maxHp, character.BaseMoveSpeed,
-                character.BaseMoveSpeed * dashMultiplier, dashDuration, dashCooldown, arenaHalf);
+                character.BaseMoveSpeed * dashMultiplier, dashDuration, dashCooldown, arenaHalf, collectCooldown);
             PlayerController = new PlayerController(Player, Events);
             Run = new RunState(new ExperienceCurve(config.Levels));
 
@@ -77,7 +79,7 @@ namespace Game.Core
             Buffs = new BuffSystem(Player, Events, Enemies, UnitId.Player);
             Director = new DirectorSystem(Enemies, config.Enemies, config.Directors, combatRandom, config, Events);
             Pickups = new PickupSystem(Player, Run, Events, combatRandom,
-                config.GetBalance("HeartDropChance", 0.12f), config.GetBalance("HeartHeal", 8f));
+                config.GetBalance("HeartDropChance", 0.09f), config.GetBalance("HeartHeal", 8f));
 
             Build = new BuildController(Player, Run, Companions, Weapons, Buffs, config, Events,
                 combatRandom, startingWeapon);

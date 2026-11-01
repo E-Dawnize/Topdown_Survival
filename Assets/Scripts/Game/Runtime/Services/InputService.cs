@@ -15,6 +15,7 @@ namespace Game.Services
         InputActionMap _uiMap;
         InputAction _move;
         InputAction _dash;
+        InputAction _collect;
         InputAction _uiNavigate;
         InputAction _uiSubmit;
         InputAction _uiCancel;
@@ -25,6 +26,7 @@ namespace Game.Services
         public InputSnapshot Last { get; private set; }
         public Vector2 MoveAxis => Last.Move;
         public bool DashPressed => Last.DashPressed;
+        public bool CollectPressed => Last.CollectPressed;
         public bool UiMode { get; private set; }
 
         /// <summary>
@@ -80,6 +82,7 @@ namespace Game.Services
             {
                 Move = _move.ReadValue<Vector2>(),
                 DashPressed = _dash.WasPressedThisFrame(),
+                CollectPressed = _collect.WasPressedThisFrame(),
             };
 
             Last = _buffer.Capture(edges);
@@ -140,6 +143,10 @@ namespace Game.Services
 
             _dash = _playerMap.AddAction("Dash", InputActionType.Button, "<Keyboard>/space");
             _dash.AddBinding("<Gamepad>/buttonSouth");
+
+            // 全屏吸取经验：GDD 的 E/RB 主动技能位。只吸经验球，不吸心。
+            _collect = _playerMap.AddAction("Collect", InputActionType.Button, "<Keyboard>/e");
+            _collect.AddBinding("<Gamepad>/rightShoulder");
 
 
 
