@@ -1,25 +1,5 @@
 [
   {
-    "Id": "CoinRewardBase",
-    "Value": 30.0,
-    "Note": "每波末基础金币"
-  },
-  {
-    "Id": "PriceGrowthPerWave",
-    "Value": 0.1,
-    "Note": "价格每波上浮比例"
-  },
-  {
-    "Id": "EnemyHpScalePerWave",
-    "Value": 1.9,
-    "Note": "敌人血量每波倍率"
-  },
-  {
-    "Id": "EnemyDamageScalePerWave",
-    "Value": 1.35,
-    "Note": "敌人伤害每波倍率"
-  },
-  {
     "Id": "ArenaHalfExtent",
     "Value": 67.0,
     "Note": "玩家可达区域的半边长 米"
@@ -38,5 +18,100 @@
     "Id": "DashCooldown",
     "Value": 2.0,
     "Note": "冲刺冷却 秒"
+  },
+  {
+    "Id": "WeaponSlots",
+    "Value": 4.0,
+    "Note": "玩家同时持有的武器上限"
+  },
+  {
+    "Id": "WeaponMaxLevel",
+    "Value": 5.0,
+    "Note": "单把武器等级上限"
+  },
+  {
+    "Id": "WeaponDamagePerLevel",
+    "Value": 0.3,
+    "Note": "武器每级伤害 +30%"
+  },
+  {
+    "Id": "WeaponCooldownPerLevel",
+    "Value": 0.92,
+    "Note": "武器每级间隔 ×0.92"
+  },
+  {
+    "Id": "WeaponProjectileMilestone",
+    "Value": 3.0,
+    "Note": "武器到这一级额外 +1 弹道"
+  },
+  {
+    "Id": "WeaponPierceMilestone",
+    "Value": 4.0,
+    "Note": "武器到这一级额外 +1 穿透"
+  },
+  {
+    "Id": "HeartDropChance",
+    "Value": 0.12,
+    "Note": "击杀掉心概率"
+  },
+  {
+    "Id": "HeartHeal",
+    "Value": 8.0,
+    "Note": "一颗心回复生命"
+  },
+  {
+    "Id": "EliteHpScale",
+    "Value": 3.2,
+    "Note": "精英血量倍率"
+  },
+  {
+    "Id": "EliteDamageScale",
+    "Value": 1.5,
+    "Note": "精英伤害倍率"
+  },
+  {
+    "Id": "EliteSpeedScale",
+    "Value": 1.05,
+    "Note": "精英移速倍率"
+  },
+  {
+    "Id": "EliteXpScale",
+    "Value": 4.0,
+    "Note": "精英经验倍率"
+  },
+  {
+    "Id": "EliteScale",
+    "Value": 1.35,
+    "Note": "精英视觉缩放"
+  },
+  {
+    "Id": "BuildWeightWeapon",
+    "Value": 30.0,
+    "Note": "抽卡类别权重：武器"
+  },
+  {
+    "Id": "BuildWeightCompanion",
+    "Value": 18.0,
+    "Note": "抽卡类别权重：旅伴"
+  },
+  {
+    "Id": "BuildWeightStat",
+    "Value": 32.0,
+    "Note": "抽卡类别权重：数值"
+  },
+  {
+    "Id": "BuildWeightBuff",
+    "Value": 22.0,
+    "Note": "抽卡类别权重：buff/道具机制"
+  },
+  {
+    "Id": "RerollsPerLevel",
+    "Value": 1.0,
+    "Note": "每次升级的免费重抽次数"
+  },
+  {
+    "Id": "LuckRarityWeight",
+    "Value": 0.01,
+    "Note": "每点幸运增加的稀有度上浮"
   }
 ]

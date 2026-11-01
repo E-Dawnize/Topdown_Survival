@@ -122,3 +122,6 @@ __pycache__/
 # Unity 在场景被删后自动创建的默认场景，场景真源是 SceneBuilder
 /Assets/Scenes/Start.unity
 /Assets/Scenes/Start.unity.meta
+
+# Local agent state
+/.pi/

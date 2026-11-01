@@ -1,0 +1,242 @@
+[
+  {
+    "Id": "L1",
+    "Level": 1,
+    "XpToNext": 6,
+    "OfferCount": 3,
+    "RarityBonus": 0.0,
+    "Note": "等级 1"
+  },
+  {
+    "Id": "L2",
+    "Level": 2,
+    "XpToNext": 7,
+    "OfferCount": 3,
+    "RarityBonus": 0.034,
+    "Note": "等级 2"
+  },
+  {
+    "Id": "L3",
+    "Level": 3,
+    "XpToNext": 8,
+    "OfferCount": 3,
+    "RarityBonus": 0.069,
+    "Note": "等级 3"
+  },
+  {
+    "Id": "L4",
+    "Level": 4,
+    "XpToNext": 9,
+    "OfferCount": 3,
+    "RarityBonus": 0.103,
+    "Note": "等级 4"
+  },
+  {
+    "Id": "L5",
+    "Level": 5,
+    "XpToNext": 11,
+    "OfferCount": 3,
+    "RarityBonus": 0.138,
+    "Note": "等级 5"
+  },
+  {
+    "Id": "L6",
+    "Level": 6,
+    "XpToNext": 13,
+    "OfferCount": 3,
+    "RarityBonus": 0.172,
+    "Note": "等级 6"
+  },
+  {
+    "Id": "L7",
+    "Level": 7,
+    "XpToNext": 15,
+    "OfferCount": 3,
+    "RarityBonus": 0.207,
+    "Note": "等级 7"
+  },
+  {
+    "Id": "L8",
+    "Level": 8,
+    "XpToNext": 17,
+    "OfferCount": 3,
+    "RarityBonus": 0.241,
+    "Note": "等级 8"
+  },
+  {
+    "Id": "L9",
+    "Level": 9,
+    "XpToNext": 20,
+    "OfferCount": 3,
+    "RarityBonus": 0.276,
+    "Note": "等级 9"
+  },
+  {
+    "Id": "L10",
+    "Level": 10,
+    "XpToNext": 23,
+    "OfferCount": 4,
+    "RarityBonus": 0.31,
+    "Note": "等级 10"
+  },
+  {
+    "Id": "L11",
+    "Level": 11,
+    "XpToNext": 26,
+    "OfferCount": 3,
+    "RarityBonus": 0.345,
+    "Note": "等级 11"
+  },
+  {
+    "Id": "L12",
+    "Level": 12,
+    "XpToNext": 31,
+    "OfferCount": 3,
+    "RarityBonus": 0.379,
+    "Note": "等级 12"
+  },
+  {
+    "Id": "L13",
+    "Level": 13,
+    "XpToNext": 36,
+    "OfferCount": 3,
+    "RarityBonus": 0.414,
+    "Note": "等级 13"
+  },
+  {
+    "Id": "L14",
+    "Level": 14,
+    "XpToNext": 41,
+    "OfferCount": 3,
+    "RarityBonus": 0.448,
+    "Note": "等级 14"
+  },
+  {
+    "Id": "L15",
+    "Level": 15,
+    "XpToNext": 48,
+    "OfferCount": 3,
+    "RarityBonus": 0.483,
+    "Note": "等级 15"
+  },
+  {
+    "Id": "L16",
+    "Level": 16,
+    "XpToNext": 56,
+    "OfferCount": 3,
+    "RarityBonus": 0.517,
+    "Note": "等级 16"
+  },
+  {
+    "Id": "L17",
+    "Level": 17,
+    "XpToNext": 64,
+    "OfferCount": 3,
+    "RarityBonus": 0.552,
+    "Note": "等级 17"
+  },
+  {
+    "Id": "L18",
+    "Level": 18,
+    "XpToNext": 75,
+    "OfferCount": 3,
+    "RarityBonus": 0.586,
+    "Note": "等级 18"
+  },
+  {
+    "Id": "L19",
+    "Level": 19,
+    "XpToNext": 87,
+    "OfferCount": 3,
+    "RarityBonus": 0.621,
+    "Note": "等级 19"
+  },
+  {
+    "Id": "L20",
+    "Level": 20,
+    "XpToNext": 101,
+    "OfferCount": 4,
+    "RarityBonus": 0.655,
+    "Note": "等级 20"
+  },
+  {
+    "Id": "L21",
+    "Level": 21,
+    "XpToNext": 117,
+    "OfferCount": 3,
+    "RarityBonus": 0.69,
+    "Note": "等级 21"
+  },
+  {
+    "Id": "L22",
+    "Level": 22,
+    "XpToNext": 135,
+    "OfferCount": 3,
+    "RarityBonus": 0.724,
+    "Note": "等级 22"
+  },
+  {
+    "Id": "L23",
+    "Level": 23,
+    "XpToNext": 157,
+    "OfferCount": 3,
+    "RarityBonus": 0.759,
+    "Note": "等级 23"
+  },
+  {
+    "Id": "L24",
+    "Level": 24,
+    "XpToNext": 182,
+    "OfferCount": 3,
+    "RarityBonus": 0.793,
+    "Note": "等级 24"
+  },
+  {
+    "Id": "L25",
+    "Level": 25,
+    "XpToNext": 211,
+    "OfferCount": 3,
+    "RarityBonus": 0.828,
+    "Note": "等级 25"
+  },
+  {
+    "Id": "L26",
+    "Level": 26,
+    "XpToNext": 245,
+    "OfferCount": 3,
+    "RarityBonus": 0.862,
+    "Note": "等级 26"
+  },
+  {
+    "Id": "L27",
+    "Level": 27,
+    "XpToNext": 284,
+    "OfferCount": 3,
+    "RarityBonus": 0.897,
+    "Note": "等级 27"
+  },
+  {
+    "Id": "L28",
+    "Level": 28,
+    "XpToNext": 330,
+    "OfferCount": 3,
+    "RarityBonus": 0.931,
+    "Note": "等级 28"
+  },
+  {
+    "Id": "L29",
+    "Level": 29,
+    "XpToNext": 383,
+    "OfferCount": 3,
+    "RarityBonus": 0.966,
+    "Note": "等级 29"
+  },
+  {
+    "Id": "L30",
+    "Level": 30,
+    "XpToNext": 444,
+    "OfferCount": 3,
+    "RarityBonus": 1.0,
+    "Note": "等级 30"
+  }
+]

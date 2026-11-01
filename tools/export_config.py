@@ -156,6 +156,8 @@ def load_enums():
     text = ENUM_SOURCE.read_text(encoding="utf-8")
     for m in re.finditer(r"public\s+enum\s+(\w+)\s*\{([^}]*)\}", text):
         name, body = m.group(1), m.group(2)
+        # 枚举成员之间可能有 /// 注释；不先剥掉，注释会和成员名粘在一起被当成非法名字。
+        body = re.sub(r"//[^\n]*", "", body)
         members = set()
         for line in body.split(","):
             tok = line.strip().split("=")[0].strip()
