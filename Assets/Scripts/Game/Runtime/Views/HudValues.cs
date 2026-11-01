@@ -1,4 +1,5 @@
 using System;
+using Game.Controllers;
 using Game.Core;
 using Game.Model;
 using Game.Systems;
@@ -11,150 +12,215 @@ namespace Game.Views
     {
         None = 0,
         Hp = 1 << 0,
-        Coins = 1 << 1,
-        Wave = 1 << 2,
-        WaveTime = 1 << 3,
-        Dash = 1 << 4,
-        AliveEnemies = 1 << 5,
-        Kills = 1 << 6,
-        All = Hp | Coins | Wave | WaveTime | Dash | AliveEnemies | Kills
+        Progress = 1 << 1,
+        RunTime = 1 << 2,
+        Dash = 1 << 3,
+        AliveEnemies = 1 << 4,
+        Kills = 1 << 5,
+        Build = 1 << 6,
+        Boss = 1 << 7,
+        All = Hp | Progress | RunTime | Dash | AliveEnemies | Kills | Build | Boss
     }
 
     /// <summary>
-    /// HUD 每帧读到的数值快照。抽成纯数据（不碰 UnityEngine）有两个用处：
-    ///   1 只有值真的变了才写 uGUI：每帧无条件改 text / fillAmount 会一直给布局制造脏标记，
-    ///     一屏静态数字也会让 Canvas 每帧重建；
-    ///   2 取值与比对的规则都能在仓库外的 dotnet harness 里直接测，不必进 Unity 看画面。
+    /// HUD 每帧读到的数值快照。抽成纯数据（不碰 UnityEngine）：
+    ///   1 只有值真的变了才写 uGUI，避免每帧重建 Canvas；
+    ///   2 取值与比对规则能在 EditMode 里直接测。
     ///
-    /// 显示用的取整也定在这里（血与倒计时向上取整、冲刺计时按 0.1 秒分档），
-    /// 免得文本和判定各按一套取整，出现"写着还剩 0s 其实还在打"这类错位。
-    /// 冲刺用向上取整而不是四舍五入：0.04 秒的残余如果舍成 0，就再也不会因为"变成 0"而刷新成"就绪"。
+    /// 快照必须自带展示所需的全部信息：HudView 只拿这一份值写控件，
+    /// 不再回头去读 PlayerModel / DirectorSystem / EnemySystem——否则“哪些字段参与刷新”
+    /// 会散落在 Diff 与 ApplyValues 两处，改一个显示项要同时动两个地方。
     /// </summary>
-    public readonly struct HudValues : IEquatable<HudValues>
+    public readonly struct HudValues
     {
         public readonly int Hp;
         public readonly int MaxHp;
         public readonly float HpRatio;
-        public readonly int Coins;
-        public readonly int WaveIndex;
-        public readonly int WavesTotal;
-        public readonly int WaveSecondsLeft;
-        public readonly int DashTenths;
-        public readonly int AliveEnemies;
-        public readonly int Kills;
 
-        public HudValues(int hp, int maxHp, float hpRatio, int coins, int waveIndex, int wavesTotal,
-            int waveSecondsLeft, int dashTenths, int aliveEnemies, int kills)
+        /// <summary>玩家不存在（装配半途失败）时血条文字显示 "-- / --"。</summary>
+        public readonly bool HasPlayer;
+
+        public readonly int Level;
+        public readonly int Xp;
+        public readonly int XpToNext;
+        public readonly float XpRatio;
+
+        public readonly int RunSecondsLeft;
+        public readonly int Threat;
+        public readonly int Kills;
+        public readonly int AliveEnemies;
+
+        /// <summary>冲刺冷却剩余，向上取整到 0.1 秒。0 表示就绪；它是 Diff 的判据（整数不受浮点噪声影响）。</summary>
+        public readonly int DashTenths;
+
+        /// <summary>冲刺冷却进度：1 = 就绪，0 = 刚按下。没有玩家时为 0（条是空的）。</summary>
+        public readonly float DashRatio;
+
+        public readonly int Weapons;
+        public readonly int WeaponSlots;
+        public readonly int Companions;
+        public readonly int CompanionSlots;
+        public readonly int Combos;
+
+        /// <summary>
+        /// 构筑内容的版本号。数量相同但武器/旅伴升级、组合触发时它会变；
+        /// HUD 只在它变化时重拼装备栏文字，不需要每帧拼字符串。
+        /// </summary>
+        public readonly int BuildRevision;
+
+        public readonly bool BossActive;
+        public readonly float BossHpRatio;
+        public readonly string BossName;
+        public readonly bool BossEnraged;
+
+        /// <summary>
+        /// 升级选卡 / 结算期间为 true：战斗数据冻结，HudView 不写那些控件。
+        /// 放在快照里，HudView 就不必为了一个 `Phase` 判断而持有 RunController。
+        /// </summary>
+        public readonly bool Frozen;
+
+        public HudValues(
+            int hp, int maxHp, float hpRatio, bool hasPlayer,
+            int level, int xp, int xpToNext, float xpRatio,
+            int runSecondsLeft, int threat,
+            int kills, int aliveEnemies,
+            int dashTenths, float dashRatio,
+            int weapons, int weaponSlots, int companions, int companionSlots, int combos,
+            bool bossActive, float bossHpRatio, string bossName, bool bossEnraged,
+            bool frozen, int buildRevision = 0)
         {
             Hp = hp;
             MaxHp = maxHp;
             HpRatio = hpRatio;
-            Coins = coins;
-            WaveIndex = waveIndex;
-            WavesTotal = wavesTotal;
-            WaveSecondsLeft = waveSecondsLeft;
-            DashTenths = dashTenths;
-            AliveEnemies = aliveEnemies;
+            HasPlayer = hasPlayer;
+
+            Level = level;
+            Xp = xp;
+            XpToNext = xpToNext;
+            XpRatio = xpRatio;
+
+            RunSecondsLeft = runSecondsLeft;
+            Threat = threat;
             Kills = kills;
+            AliveEnemies = aliveEnemies;
+
+            DashTenths = dashTenths;
+            DashRatio = dashRatio;
+
+            Weapons = weapons;
+            WeaponSlots = weaponSlots;
+            Companions = companions;
+            CompanionSlots = companionSlots;
+            Combos = combos;
+            BuildRevision = buildRevision;
+
+            BossActive = bossActive;
+            BossHpRatio = bossHpRatio;
+            BossName = bossName;
+            BossEnraged = bossEnraged;
+
+            Frozen = frozen;
         }
 
-        /// <summary>
-        /// 从 Model / Controller 的只读接口取一份快照。规则（血量比例、波次剩余时间、冲刺冷却）
-        /// 都向各自的所有者要，HUD 不在这里重算一遍——两处各算一次，改了规则就会只改对一半。
-        /// 任一引用为 null 时该项给 0：HUD 在没有战斗的场景里照常显示占位值。
-        /// </summary>
         public static HudValues From(PlayerModel player, RunState run, RunController runController,
-            EnemySystem enemies)
+            EnemySystem enemies, BuildController build, DirectorSystem director, bool bossEnraged)
         {
-            float hp = player != null ? player.HP : 0f;
-            float maxHp = player != null ? player.MaxHP : 0f;
-            float dashCooldownTimer = player != null ? player.DashCooldownTimer : 0f;
+            bool hasPlayer = player != null;
+            float hp = hasPlayer ? player.HP : 0f;
+            float maxHp = hasPlayer ? player.MaxHP : 0f;
+
+            float dashCooldown = hasPlayer ? player.DashCooldown : 0f;
+            float dashTimer = hasPlayer ? player.DashCooldownTimer : 0f;
+            float dashRatio = hasPlayer
+                ? (dashCooldown > 0f ? Clamp01(1f - dashTimer / dashCooldown) : 1f)
+                : 0f;
 
             return new HudValues(
                 hp: (int)Math.Ceiling(hp),
                 maxHp: (int)Math.Ceiling(maxHp),
-                hpRatio: player != null ? player.HpRatio : 0f,
-                coins: run != null ? run.Coins : 0,
-                waveIndex: run != null ? run.WaveIndex : 0,
-                wavesTotal: run != null ? run.WavesTotal : 0,
-                waveSecondsLeft: runController != null ? SecondsLeftCeil(runController.WaveSecondsLeft) : 0,
-                dashTenths: dashCooldownTimer > 0f ? (int)Math.Ceiling(dashCooldownTimer * 10f) : 0,
+                hpRatio: hasPlayer ? player.HpRatio : 0f,
+                hasPlayer: hasPlayer,
+                level: run != null ? run.Level : 1,
+                xp: run != null ? run.Xp : 0,
+                xpToNext: run != null ? run.XpToNext : 0,
+                xpRatio: run != null ? run.XpRatio : 0f,
+                runSecondsLeft: runController != null ? SecondsLeftCeil(runController.RunSecondsLeft) : 0,
+                threat: run != null ? Math.Max(1, run.HighestThreat) : 1,
+                kills: run != null ? run.Kills : 0,
                 aliveEnemies: enemies != null ? enemies.AliveCount : 0,
-                kills: runController != null ? runController.Kills : 0);
+                dashTenths: dashTimer > 0f ? (int)Math.Ceiling(dashTimer * 10f) : 0,
+                dashRatio: dashRatio,
+                weapons: build != null ? build.WeaponCount : 0,
+                weaponSlots: build != null ? build.WeaponSlots : 4,
+                companions: build != null ? build.CompanionCount : 0,
+                companionSlots: CompanionSystem.MaxCompanions,
+                combos: build != null ? build.ActiveComboCount : 0,
+                bossActive: director != null && director.BossActive,
+                bossHpRatio: director != null ? director.BossHpRatio : 0f,
+                bossName: director != null ? director.BossName : string.Empty,
+                bossEnraged: bossEnraged,
+                frozen: runController != null &&
+                        (runController.Phase == RunPhase.LevelUp || runController.Phase == RunPhase.GameOver),
+                buildRevision: build != null ? build.LoadoutRevision : 0);
         }
 
-        /// <summary>
-        /// 倒计时向上取整，先减去一个亚毫秒的容差：固定步长累加出来的 29.99994 秒
-        /// 会让剩余时间变成 30.00006，直接向上取整就多跳一秒（倒计时看着卡一下）。
-        /// 容差只吃掉累加误差，不影响“还剩 0.02 秒也算 1 秒”这条显示规则。
-        /// </summary>
         static int SecondsLeftCeil(float secondsLeft)
         {
             if (secondsLeft <= 0f) return 0;
             return (int)Math.Ceiling(secondsLeft - 0.001f);
         }
 
-        /// <summary>与另一份快照比，返回哪几项不一样。全一样时返回 <see cref="HudField.None"/>。</summary>
+        static float Clamp01(float value)
+        {
+            if (value < 0f) return 0f;
+            return value > 1f ? 1f : value;
+        }
+
+        /// <summary>哪些项和上一份快照不同。差异按 HUD 的显示块分组，刷新时按块整块重写。</summary>
         public HudField Diff(in HudValues previous)
         {
             HudField changed = HudField.None;
 
-            if (Hp != previous.Hp || MaxHp != previous.MaxHp || !HpRatio.Equals(previous.HpRatio))
+            if (Hp != previous.Hp || MaxHp != previous.MaxHp || HasPlayer != previous.HasPlayer ||
+                !HpRatio.Equals(previous.HpRatio))
             {
                 changed |= HudField.Hp;
             }
 
-            if (Coins != previous.Coins) changed |= HudField.Coins;
-            if (WaveIndex != previous.WaveIndex || WavesTotal != previous.WavesTotal) changed |= HudField.Wave;
-            if (WaveSecondsLeft != previous.WaveSecondsLeft) changed |= HudField.WaveTime;
-            if (DashTenths != previous.DashTenths) changed |= HudField.Dash;
+            if (Level != previous.Level || Xp != previous.Xp || XpToNext != previous.XpToNext ||
+                !XpRatio.Equals(previous.XpRatio))
+            {
+                changed |= HudField.Progress;
+            }
+
+            if (RunSecondsLeft != previous.RunSecondsLeft || Threat != previous.Threat)
+            {
+                changed |= HudField.RunTime;
+            }
+
+            if (DashTenths != previous.DashTenths || !DashRatio.Equals(previous.DashRatio))
+            {
+                changed |= HudField.Dash;
+            }
+
             if (AliveEnemies != previous.AliveEnemies) changed |= HudField.AliveEnemies;
             if (Kills != previous.Kills) changed |= HudField.Kills;
 
-            return changed;
-        }
-
-        /// <summary>
-        /// 用 <paramref name="written"/> 指定的那几项从 <paramref name="newer"/> 覆盖本快照，其余保持原值。
-        /// HUD 存的是"上一次真正写进 uGUI 的数值"，不是"上一帧读到什么"：
-        /// 商店与结算里战斗项被冻结、没写进去，它们就必须继续留在旧值里，
-        /// 否则解冻后差值算不出来，血条与倒计时会一直停在冻结前的数字上。
-        /// </summary>
-        public HudValues Merge(in HudValues newer, HudField written)
-        {
-            return new HudValues(
-                hp: (written & HudField.Hp) != 0 ? newer.Hp : Hp,
-                maxHp: (written & HudField.Hp) != 0 ? newer.MaxHp : MaxHp,
-                hpRatio: (written & HudField.Hp) != 0 ? newer.HpRatio : HpRatio,
-                coins: (written & HudField.Coins) != 0 ? newer.Coins : Coins,
-                waveIndex: (written & HudField.Wave) != 0 ? newer.WaveIndex : WaveIndex,
-                wavesTotal: (written & HudField.Wave) != 0 ? newer.WavesTotal : WavesTotal,
-                waveSecondsLeft: (written & HudField.WaveTime) != 0 ? newer.WaveSecondsLeft : WaveSecondsLeft,
-                dashTenths: (written & HudField.Dash) != 0 ? newer.DashTenths : DashTenths,
-                aliveEnemies: (written & HudField.AliveEnemies) != 0 ? newer.AliveEnemies : AliveEnemies,
-                kills: (written & HudField.Kills) != 0 ? newer.Kills : Kills);
-        }
-
-        public bool Equals(HudValues other) => Diff(other) == HudField.None;
-
-        public override bool Equals(object obj) => obj is HudValues other && Equals(other);
-
-        public override int GetHashCode()
-        {
-            unchecked
+            if (Weapons != previous.Weapons || WeaponSlots != previous.WeaponSlots ||
+                Companions != previous.Companions || CompanionSlots != previous.CompanionSlots ||
+                Combos != previous.Combos || BuildRevision != previous.BuildRevision)
             {
-                int hash = Hp;
-                hash = (hash * 397) ^ MaxHp;
-                hash = (hash * 397) ^ HpRatio.GetHashCode();
-                hash = (hash * 397) ^ Coins;
-                hash = (hash * 397) ^ WaveIndex;
-                hash = (hash * 397) ^ WavesTotal;
-                hash = (hash * 397) ^ WaveSecondsLeft;
-                hash = (hash * 397) ^ DashTenths;
-                hash = (hash * 397) ^ AliveEnemies;
-                hash = (hash * 397) ^ Kills;
-                return hash;
+                changed |= HudField.Build;
             }
+
+            if (BossActive != previous.BossActive || BossEnraged != previous.BossEnraged ||
+                !BossHpRatio.Equals(previous.BossHpRatio) ||
+                !string.Equals(BossName, previous.BossName, StringComparison.Ordinal))
+            {
+                changed |= HudField.Boss;
+            }
+
+            return changed;
         }
     }
 }

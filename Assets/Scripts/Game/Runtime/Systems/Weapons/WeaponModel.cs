@@ -19,29 +19,75 @@ namespace Game.Systems.Weapons
 
         public readonly WeaponDef Def;
         public readonly IWeaponBehaviour Behaviour;
+        public readonly WeaponUpgradeRules Rules;
 
         float _cooldownRemaining;
 
-        public WeaponModel(WeaponDef def, IWeaponBehaviour behaviour)
+        public WeaponModel(WeaponDef def, IWeaponBehaviour behaviour, WeaponUpgradeRules rules = null)
         {
             Def = def ?? throw new ArgumentNullException(nameof(def));
             Behaviour = behaviour ?? throw new ArgumentNullException(nameof(behaviour));
+            Rules = rules ?? WeaponUpgradeRules.Default;
         }
 
         public string Id => Def.Id;
 
-        public float BaseDamage => Def.BaseDamage;
+        /// <summary>1..Rules.MaxLevel。升级走 UpgradeLevel，直接改字段会让伤害与冷却不同步。</summary>
+        public int Level { get; private set; } = 1;
 
-        /// <summary>表里的基础间隔。实际间隔还会被攻速加成除，见 Fire。</summary>
-        public float Cooldown => Def.Cooldown;
+        public bool CanLevelUp => Level < Rules.MaxLevel;
+
+        public float BaseDamage => Def.BaseDamage * Rules.DamageMultiplier(Level);
+
+        /// <summary>表里的基础间隔再乘等级成长。实际间隔还会被攻速加成除，见 Fire。</summary>
+        public float Cooldown => Def.Cooldown * Rules.CooldownMultiplier(Level);
 
         public float Range => Def.Range;
 
+        /// <summary>
+        /// 最近一次真正出手时的有效射程。近战的表现层要按它画扇形，否则射程道具加了以后
+        /// 弧线还是基础射程，会出现「看着没砍到却掉血」。远程也顺手写一份，调试层可以直接读。
+        /// </summary>
+        public float LastRange { get; set; }
+
+        /// <summary>
+        /// 近战伤害窗口的起止秒数（表里 Params[0] / Params[1]）。
+        /// 模拟的伤害判定与表现层的弧线都读这一份：两处各写一个 0.08 迟早会对不上。
+        /// 表里写反时在这里交换，调用方拿到的永远是 start &lt;= end。
+        /// </summary>
+        public float MeleeWindowStart
+        {
+            get
+            {
+                float start = Def.GetParam(0, 0.08f);
+                float end = Def.GetParam(1, 0.22f);
+                return start <= end ? start : end;
+            }
+        }
+
+        public float MeleeWindowEnd
+        {
+            get
+            {
+                float start = Def.GetParam(0, 0.08f);
+                float end = Def.GetParam(1, 0.22f);
+                return start <= end ? end : start;
+            }
+        }
+
         /// <summary>一次开火打几发。表里填 0 或负数没有意义，行为那边按 1 处理。</summary>
-        public int Projectiles => Def.Projectiles;
+        public int Projectiles => Def.Projectiles + Rules.BonusProjectiles(Level);
 
         /// <summary>能命中几个目标（1 = 只命中第一个，2 = 穿过第一个再打第二个）。</summary>
-        public int Pierce => Def.Pierce;
+        public int Pierce => Def.Pierce + Rules.BonusPierce(Level);
+
+        /// <summary>升 1 级，返回是否真的升了。满级返回 false，调用方不用自己判。</summary>
+        public bool UpgradeLevel()
+        {
+            if (!CanLevelUp) return false;
+            Level++;
+            return true;
+        }
 
         public float ProjectileSpeed => Def.ProjectileSpeed;
 
@@ -59,6 +105,13 @@ namespace Game.Systems.Weapons
 
         /// <summary>这次装填一共打出去几次。调试层与单测靠它数开火次数，不用去数已经飞走的投射物。</summary>
         public int ShotsFired { get; private set; }
+
+        /// <summary>
+        /// 最近一次真正瞄准/挥砍的方向（世界 x,z）。纯表现层读它来转武器模型：
+        /// 远程自动索敌可能不朝着玩家移动方向，只让武器架跟玩家转会让弓口和实际弹道对不上。
+        /// 默认 zero 表示还没有开过火，表现层退回父节点朝向。
+        /// </summary>
+        public Vector2 AimDirection { get; set; }
 
         public void Tick(float dt)
         {
@@ -78,7 +131,7 @@ namespace Game.Systems.Weapons
             float divisor = 1f + stats.AttackSpeed;
             if (divisor < MinSpeedDivisor) divisor = MinSpeedDivisor;
 
-            _cooldownRemaining = Def.Cooldown / divisor;
+            _cooldownRemaining = Cooldown / divisor;
             ShotsFired++;
         }
     }

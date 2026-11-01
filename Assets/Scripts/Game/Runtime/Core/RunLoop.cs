@@ -1,5 +1,4 @@
 using Game.Core.Events;
-using Game.Views;
 using UnityEngine;
 
 namespace Game.Core
@@ -20,6 +19,7 @@ namespace Game.Core
     {
         readonly RunClock _clock = new RunClock();
 
+        AppRoot _root;
         IEventBus _bus;
         InputSnapshot _snapshot;
         Vector2 _prevPos;
@@ -28,11 +28,15 @@ namespace Game.Core
         Vector2 _currDir;
         bool _viewReady;
 
-        void Awake()
+        /// <summary>
+        /// 由 AppRoot 在装配完成后显式调用。RunLoop 不再回查静态单例，
+        /// 场景里没有 AppRoot 时它就是一个不动的空循环。
+        /// </summary>
+        public void Bind(AppRoot root)
         {
-            // AppRoot 的执行顺序在前（-1000），它的 Awake 里 Events 已经建好，这里订阅不会落空。
-            // 没有 AppRoot 的场景（空场景里单独放一个 RunLoop 调试）就没有事件，跳过即可。
-            _bus = AppRoot.Instance?.Events;
+            _bus?.Unsubscribe<UnitDamaged>(OnUnitDamaged);
+            _root = root;
+            _bus = root != null ? root.Events : null;
             _bus?.Subscribe<UnitDamaged>(OnUnitDamaged);
         }
 
@@ -40,6 +44,7 @@ namespace Game.Core
         {
             _bus?.Unsubscribe<UnitDamaged>(OnUnitDamaged);
             _bus = null;
+            _root = null;
         }
 
         /// <summary>
@@ -51,12 +56,12 @@ namespace Game.Core
             if (!HitFeedback.IsEmphasized(e.Amount, e.IsCrit)) return;
 
             _clock.RequestHitStop(HitFeedback.HitStopSeconds);
-            AppRoot.Instance?.Camera?.Shake(HitFeedback.ShakeForce);
+            _root?.Camera?.Shake(HitFeedback.ShakeForce);
         }
 
         void Update()
         {
-            AppRoot root = AppRoot.Instance;
+            AppRoot root = _root;
             if (root == null) return;
 
             // 1. 采样输入。定格时也照常采：恢复后不会因为漏了一帧输入而丢一次冲刺
@@ -71,29 +76,33 @@ namespace Game.Core
             if (!_viewReady)
             {
                 _prevPos = _currPos = simulation.Player.Position;
-                _prevDir = _currDir = ViewSnapshot.DirectionOf(simulation.Player.Facing);
+                _prevDir = _currDir = simulation.Player.Forward;
                 _viewReady = true;
             }
 
-            // 2..N 模拟：每步的固定顺序在 RunSimulation.Tick 里
-            int steps = _clock.Advance(Time.deltaTime);
+            // 2..N 模拟：每步的固定顺序在 RunSimulation.Tick 里。
+            // BeginFrame 只给额度，TryConsumeStep 真正执行一步才扣时间；
+            // 上一步触发定格时，本帧剩余额度会留在累加器里，下一帧不会被吞掉。
+            int steps = _clock.BeginFrame(Time.deltaTime);
             for (int i = 0; i < steps; i++)
             {
-                // 上一步命中触发了定格：本帧剩下的步也不再跑，
-                // 否则一帧跑三步时，“卡住”要等到下一帧才开始
-                if (_clock.IsHitStopped) break;
+                if (!_clock.TryConsumeStep()) break;
 
                 _prevPos = _currPos;
                 _prevDir = _currDir;
                 simulation.Tick(RunClock.FixedStep, ref _snapshot);
                 _currPos = simulation.Player.Position;
-                _currDir = ViewSnapshot.DirectionOf(simulation.Player.Facing);
+                _currDir = simulation.Player.Forward;
+
+                // 按钮边沿已经交给一个模拟步观察过，清掉锁存；
+                // 零步帧和定格帧不会走到这里，所以冲刺不会被下一帧覆盖。
+                root.Input?.ConsumeSimulationStep();
             }
         }
 
         void LateUpdate()
         {
-            AppRoot root = AppRoot.Instance;
+            AppRoot root = _root;
             if (root == null || !_viewReady) return;
 
             // 表现层同步。模拟是阶梯的，渲染按实际帧率在相邻两步之间插值，
@@ -104,12 +113,13 @@ namespace Game.Core
             Vector2 dir = Vector2.Lerp(_prevDir, _currDir, alpha);
             dir = dir.sqrMagnitude > 1e-6f ? dir.normalized : _currDir;
 
-            root.PlayerView?.Sync(new ViewSnapshot(pos, dir));
+            root.PlayerView?.Sync(pos, dir);
 
             // 敌人与投射物各自拿自己的 PrevPosition/Position 和同一个 alpha 插值。
             // 掉落物没有上一步位置可分（槽位会换绑），直接按快照写位置。
             // 旅伴与敌人同一套插值：它也每步记 PrevPosition，渲染层只吃插值后的位置。
             root.EnemyViews?.Sync(alpha);
+            root.EnemyProjectileViews?.Sync(alpha);
             root.CompanionViews?.Sync(alpha);
             root.ProjectileViews?.Sync(alpha);
             root.PickupViews?.Sync();

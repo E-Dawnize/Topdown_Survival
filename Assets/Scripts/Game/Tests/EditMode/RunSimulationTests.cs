@@ -23,9 +23,9 @@ namespace Game.Tests
         const int EnemyCount = 50;
         const int Steps = 600;   // 10 秒
 
-        /// <summary>刷怪环 8~15 米，与 WaveController 用的是同一组半径。</summary>
-        const float SpawnRadiusMin = WaveController.SpawnRadiusMin;
-        const float SpawnRadiusMax = WaveController.SpawnRadiusMax;
+        /// <summary>刷怪环与正式导演用的是同一组半径。</summary>
+        const float SpawnRadiusMin = SpawnRing.RadiusMin;
+        const float SpawnRadiusMax = SpawnRing.RadiusMax;
 
         static readonly ulong WorldSeed = AppRoot.DefaultWorldSeed;
 
@@ -36,21 +36,21 @@ namespace Game.Tests
             {
                 new EnemyDef
                 {
-                    Id = "Crawler", Name = "爬虫", Behaviour = EnemyBehaviourType.Chase,
-                    HP = 12f, Damage = 6f, Speed = 3f, AttackRange = 0.6f, AttackInterval = 1f,
-                    CoinDrop = 1, BodyRadius = 0.35f
+                    Id = "Crawler", Name = "爬虫", PrefabId = "Crawler", Behaviour = EnemyBehaviourType.Chase,
+                    Tier = 1, HP = 12f, Damage = 6f, Speed = 3f, AttackRange = 0.6f, AttackInterval = 1f,
+                    XpValue = 1, BodyRadius = 0.35f, Scale = 1f
                 },
                 new EnemyDef
                 {
-                    Id = "Charger", Name = "冲锋兵", Behaviour = EnemyBehaviourType.Charge,
-                    HP = 18f, Damage = 10f, Speed = 2.5f, AttackRange = 4f, AttackInterval = 3f,
-                    CoinDrop = 2, BodyRadius = 0.4f
+                    Id = "Charger", Name = "冲锋兵", PrefabId = "Charger", Behaviour = EnemyBehaviourType.Charge,
+                    Tier = 3, HP = 18f, Damage = 10f, Speed = 2.5f, AttackRange = 4f, AttackInterval = 3f,
+                    XpValue = 2, BodyRadius = 0.4f, Scale = 1.1f
                 },
                 new EnemyDef
                 {
-                    Id = "Thrower", Name = "投手", Behaviour = EnemyBehaviourType.Ranged,
-                    HP = 15f, Damage = 8f, Speed = 2f, AttackRange = 5f, AttackInterval = 2.5f,
-                    CoinDrop = 2, BodyRadius = 0.35f
+                    Id = "Thrower", Name = "投手", PrefabId = "Thrower", Behaviour = EnemyBehaviourType.Ranged,
+                    Tier = 2, HP = 15f, Damage = 8f, Speed = 2f, AttackRange = 5f, AttackInterval = 2.5f,
+                    XpValue = 2, BodyRadius = 0.35f, Scale = 1f
                 }
             };
         }
@@ -183,25 +183,27 @@ namespace Game.Tests
             var weapons = new WeaponSystem(enemies, new DeterministicRandom(WorldSeed), AppRoot.PlayerUnit, 16, events);
             var simulation = new RunSimulation(player, new PlayerController(player, events), enemies, weapons, events);
 
-            // 贴脸的高伤害怪：攻击间隔 0.2 秒、伤害 50，第一步就能把 10 血打空
+            // 贴脸的高伤害怪：伤害 50，起手 0.32 秒后把 10 血打空。
+            // 先不输入移动：敌人起手会锁定方向，玩家站着不动才会被这一刀打到；
+            // 死亡后再按住移动，用来验证“死后模拟不再推进”。
             var killer = new EnemyDef
             {
-                Id = "test_killer", Name = "测试杀手", Behaviour = EnemyBehaviourType.Chase,
-                HP = 100f, Damage = 50f, Speed = 3f, AttackRange = 1f, AttackInterval = 0.2f,
-                CoinDrop = 0, BodyRadius = 0.35f
+                Id = "test_killer", Name = "测试杀手", PrefabId = "Crawler", Behaviour = EnemyBehaviourType.Chase,
+                Tier = 1, HP = 100f, Damage = 50f, Speed = 3f, AttackRange = 1f, AttackInterval = 0.2f,
+                XpValue = 1, BodyRadius = 0.35f, Scale = 1f
             };
             enemies.Spawn(killer, new Vector2(0.5f, 0f));
 
             int died = 0;
             events.Subscribe<PlayerDied>(_ => died++);
 
-            var input = new InputSnapshot { Move = new Vector2(1f, 0f) };
+            var input = new InputSnapshot();
             for (int i = 0; i < 120; i++)
             {
                 simulation.Tick(Dt, ref input);
             }
 
-            Assert.IsTrue(player.IsDead, "10 血挨 50 点接触伤害，第一步就该死");
+            Assert.IsTrue(player.IsDead, "10 血挨起手后的一记 50 点近战，应该被打死");
             Assert.AreEqual(1, died, "PlayerDied 只能发一次");
 
             Vector2 deathPosition = player.Position;
@@ -265,21 +267,74 @@ namespace Game.Tests
             // 16 血、不动的靶子放在射程内：弓一发 8 点，两发必死（掘到暴击则更快，结论一样）
             int slot = enemies.Spawn(new EnemyDef
             {
-                Id = "dummy", Name = "测试靶", Behaviour = EnemyBehaviourType.Chase,
-                HP = 16f, Damage = 0f, Speed = 0f, AttackRange = 1f, AttackInterval = 1f,
-                CoinDrop = 0, BodyRadius = 0.3f
+                Id = "dummy", Name = "测试靶", PrefabId = "Crawler", Behaviour = EnemyBehaviourType.Chase,
+                Tier = 1, HP = 16f, Damage = 0f, Speed = 0f, AttackRange = 1f, AttackInterval = 1f,
+                XpValue = 1, BodyRadius = 0.3f, Scale = 1f
             }, new Vector2(4f, 0f));
 
             var died = new List<UnitDied>();
             events.Subscribe<UnitDied>(died.Add);
+            UnitId targetId = enemies.Get(slot).Id;
 
             Run(simulation, Steps);
 
             Assert.AreEqual(1, died.Count, "16 血的靶子应当被旅伴打死一只");
-            Assert.AreEqual(EnemySystem.UnitIdOf(slot), died[0].Unit);
+            Assert.AreEqual(targetId, died[0].Unit);
             Assert.AreEqual(companion.UnitId, died[0].Killer, "击杀应当归旅伴，不能算成玩家");
             Assert.AreNotEqual(AppRoot.PlayerUnit, died[0].Killer, "玩家根本没开火，不该出现在击杀归属里");
             Assert.IsNull(enemies.Get(slot), "清理阶段把尸体搞掉，与玩家击杀走同一条路径");
+        }
+
+        [Test]
+        public void UnitIdsStayUniqueAndSlotReuseDoesNotSkipTheNewEnemy()
+        {
+            var events = new EventBus();
+            var player = new PlayerModel(1000f, 5f, 15f, 0.15f, 2f, ArenaHalf);
+            var enemies = new EnemySystem(player, ArenaHalf);
+
+            EnemyDef weak = new EnemyDef
+            {
+                Id = "weak", Name = "弱靶", PrefabId = "Crawler", Behaviour = EnemyBehaviourType.Chase,
+                Tier = 1, HP = 1f, Damage = 0f, Speed = 0f, AttackRange = 1f, AttackInterval = 1f,
+                XpValue = 1, BodyRadius = 0.3f, Scale = 1f
+            };
+            EnemyDef strong = new EnemyDef
+            {
+                Id = "strong", Name = "新靶", PrefabId = "Crawler", Behaviour = EnemyBehaviourType.Chase,
+                Tier = 1, HP = 100f, Damage = 0f, Speed = 0f, AttackRange = 1f, AttackInterval = 1f,
+                XpValue = 1, BodyRadius = 0.3f, Scale = 1f
+            };
+
+            int firstSlot = enemies.Spawn(weak, new Vector2(0.1f, 0f));
+            EnemyModel first = enemies.Get(firstSlot);
+
+            Assert.AreNotEqual(AppRoot.PlayerUnit, first.Id, "玩家和敌人不能共用 UnitId");
+            Assert.AreEqual(UnitKind.Enemy, first.Id.Kind);
+
+            var projectiles = new ProjectileSystem(new DeterministicRandom(WorldSeed), 8, events);
+            var damage = new DamageInfo(5f, DamageType.Physical, AppRoot.PlayerUnit, Vector2.right, 0f, false,
+                DamageFlags.Dodgeable);
+
+            enemies.Grid.Rebuild(Vector2.zero, enemies);
+            Assert.IsTrue(projectiles.Spawn(Vector2.zero, Vector2.right, 18f, 10f, damage, pierce: 2));
+            projectiles.Tick(Dt, enemies);
+
+            Assert.IsTrue(first.IsDead, "第一发应当命中并杀死 1 血靶子");
+            Assert.AreEqual(1, projectiles.Count, "穿透 2 命中一个目标后还应当继续飞");
+
+            // 释放槽位后立即刷一个新敌人：它应当拿到同一个槽位，但拿不到同一个 UnitId。
+            enemies.Remove(firstSlot);
+            int secondSlot = enemies.Spawn(strong, new Vector2(0.5f, 0f));
+            EnemyModel second = enemies.Get(secondSlot);
+
+            Assert.AreEqual(firstSlot, secondSlot, "测试前提：空闲槽位会被下一个敌人复用");
+            Assert.AreNotEqual(first.Id, second.Id, "槽位复用不能复用实体身份");
+
+            enemies.Grid.Rebuild(Vector2.zero, enemies);
+            projectiles.Tick(Dt, enemies);
+
+            Assert.Less(second.HP, strong.HP,
+                "同一发穿透投射物不能把新敌人的槽位当成旧敌人的命中记录而跳过它");
         }
     }
 }

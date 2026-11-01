@@ -43,7 +43,10 @@ namespace Game.Systems.Weapons
             // 这里不开火也不吃冷却，至少不会把一件坏数据变成"这把武器哑了 0.85 秒"
             if (weapon.ProjectileSpeed <= 0f) return;
 
-            int slot = FindNearestAlive(shooterPosition, weapon.Range);
+            float range = stats.EffectiveRange(weapon.Range);
+
+            // 索敌走 EnemySystem 的共享 API：射手只提供自己的结果容器，不在武器里再实现一份“射程内最近活目标”
+            int slot = _enemies.FindNearestAliveSlot(shooterPosition, range, _candidates);
             if (slot < 0) return;
 
             EnemyModel target = _enemies.Get(slot);
@@ -51,13 +54,17 @@ namespace Game.Systems.Weapons
             float distance = toTarget.magnitude;
 
             // 网格里存的是上一次 Rebuild 的位置，目标可能这一 tick 已经跑出射程，用当前位置复核一遍
-            if (distance > weapon.Range) return;
+            if (distance > range) return;
 
             // 贴身重合时方向没有意义，退回射手朝向：距离为 0，取哪个方向都不影响命中判定
             Vector2 aim = distance > MinAimDistance ? toTarget / distance : facing;
+            weapon.AimDirection = aim;
+
+            // 记录这次开火的有效射程，供表现层与调试层读取（近战的扇形也走同一个字段）。
+            weapon.LastRange = range;
 
             bool isCrit = WeaponDamage.RollCrit(_rng.Next01(), stats);
-            float falloff = WeaponDamage.DistanceFalloff(distance, weapon.Range);
+            float falloff = WeaponDamage.DistanceFalloff(distance, range);
             float amount = WeaponDamage.Amount(weapon.BaseDamage, stats, isCrit, falloff);
 
             int count = (weapon.Projectiles > 0 ? weapon.Projectiles : 1) + stats.BonusProjectiles;
@@ -71,7 +78,7 @@ namespace Game.Systems.Weapons
             float firstAngle = baseAngle - (count - 1) * stepRad * 0.5f;
 
             // 最远飞行距离 = 射程：箭飞到射程尽头就回收，让箭继续飞只会打到锁定范围外、本来就不该被打到的目标
-            float maxDistance = weapon.Range;
+            float maxDistance = range;
             float speed = weapon.ProjectileSpeed;
 
             for (int i = 0; i < count; i++)
@@ -82,7 +89,9 @@ namespace Game.Systems.Weapons
                 // 击退强度按本次命中的伤害换算：大伤害推得远（换算在 WeaponDamage.KnockbackSpeed）
                 DamageInfo damage = WeaponDamage.Compose(amount, _shooter, direction, isCrit,
                     WeaponDamage.KnockbackSpeed(amount));
-                if (!_projectiles.Spawn(shooterPosition, direction, speed, maxDistance, damage, weapon.Pierce))
+                Vector2 aimPoint = shooterPosition + direction * distance;
+                if (!_projectiles.Spawn(shooterPosition, direction, speed, maxDistance, aimPoint,
+                        damage, weapon.Pierce))
                 {
                     // 池被打满：这一枪剩下的弹道就没了，冷却照常起算，不因为丢了弹道而卡住下一枪
                     break;
@@ -90,34 +99,6 @@ namespace Game.Systems.Weapons
             }
 
             weapon.Fire(stats);
-        }
-
-        /// <summary>
-        /// 射程内最近的活目标。用 QueryCircle 而不是 QueryNearest：
-        /// 快照里可能留着已移除/已死的槽位，QueryNearest 选中死人就整轮不开火，
-        /// 而多扫一圈挑出"活着且最近"的那一个只多花几次比较。
-        /// </summary>
-        int FindNearestAlive(Vector2 origin, float range)
-        {
-            _candidates.Clear();
-            _enemies.Grid.QueryCircle(origin, range, _candidates);
-
-            int best = -1;
-            float bestSqr = range * range;
-            for (int i = 0; i < _candidates.Count; i++)
-            {
-                int slot = _candidates[i];
-                EnemyModel enemy = _enemies.Get(slot);
-                if (enemy == null || !enemy.IsAlive || enemy.IsDead) continue;
-
-                // 精确距离用当前模型位置，不用快照位置
-                float sqr = (enemy.Position - origin).sqrMagnitude;
-                if (sqr > bestSqr) continue;
-
-                bestSqr = sqr;
-                best = slot;
-            }
-            return best;
         }
     }
 }

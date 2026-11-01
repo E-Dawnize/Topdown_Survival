@@ -1,222 +1,97 @@
-using System.Collections.Generic;
-using Game.Config;
-using Game.Core;
-using Game.Core.Events;
-using Game.Model;
-using Game.Systems;
 using Game.Views;
 using NUnit.Framework;
-using UnityEngine;
 
 namespace Game.Tests
 {
     /// <summary>
-    /// HUD 的"值没变就不刷新"（I2-9）用 <see cref="HudValues.Diff"/> 表达：每帧取一份快照，
-    /// 与上一份比，只有比出来的那几项才写 uGUI。所以这条性质可以在这里直接测，不必进 Unity 数脏标记。
+    /// HUD 的"值没变就不刷新"用 HudValues.Diff 表达：每帧取快照，只有变了的那一组才写 uGUI。
+    /// 这里直接构造快照，验位标记不会漏项、不会把没变的项算脏。
     ///
-    /// 顺带钉住取数口：快照必须从 Model / Controller 的只读接口取（血量比例、波次剩余时间、
-    /// 击杀数都不是 HUD 自己算的），否则改了规则以后 HUD 会显示一套、模拟跑另一套。
+    /// 快照还负责把展示所需的一切带齐（是否还有玩家、冲刺进度、BOSS 名字/狂暴、是否冻结），
+    /// 所以这里也验这些字段会被算进对应组，免得 HudView 又回头去读 Model。
     /// </summary>
     public class HudValuesTests
     {
-        const float Dt = 1f / 60f;
-        const ulong Seed = 0x11D00000ABCD1234UL;
-        const float ArenaHalf = 67f;
+        static HudValues Snapshot(int hp = 80, int maxHp = 100, bool hasPlayer = true, int level = 3, int xp = 4,
+            int xpToNext = 10, int secondsLeft = 30, int threat = 2, int kills = 7, int alive = 5, int dash = 0,
+            float dashRatio = 1f, int weapons = 2, int weaponSlots = 4, int companions = 1,
+            int companionSlots = 4, int combos = 0, bool boss = false, float bossHp = 0f,
+            string bossName = "", bool bossEnraged = false, bool frozen = false, int buildRevision = 0)
+        {
+            return new HudValues(hp, maxHp, maxHp > 0 ? (float)hp / maxHp : 0f, hasPlayer, level, xp, xpToNext,
+                xpToNext > 0 ? (float)xp / xpToNext : 0f, secondsLeft, threat, kills, alive, dash, dashRatio,
+                weapons, weaponSlots, companions, companionSlots, combos, boss, bossHp, bossName, bossEnraged,
+                frozen, buildRevision);
+        }
 
         [Test]
         public void IdenticalValuesReportNoChange()
         {
-            HudValues values = Snapshot(hp: 80, maxHp: 100, coins: 10, wave: 2, wavesTotal: 3, secondsLeft: 30,
-                dashTenths: 0, alive: 5, kills: 7);
+            HudValues values = Snapshot();
 
-            Assert.AreEqual(HudField.None, values.Diff(values), "同一个快照跟自己比不该有任何一项算变化");
-            Assert.IsTrue(values.Equals(Snapshot(hp: 80, maxHp: 100, coins: 10, wave: 2, wavesTotal: 3,
-                secondsLeft: 30, dashTenths: 0, alive: 5, kills: 7)));
+            Assert.AreEqual(HudField.None, values.Diff(values));
+            Assert.AreEqual(HudField.None, Snapshot().Diff(values));
         }
 
         [Test]
         public void EachFieldReportsOnlyItsOwnFlag()
         {
-            HudValues baseline = Snapshot(hp: 80, maxHp: 100, coins: 10, wave: 2, wavesTotal: 3, secondsLeft: 30,
-                dashTenths: 0, alive: 5, kills: 7);
+            HudValues baseline = Snapshot();
 
-            Assert.AreEqual(HudField.Hp, Snapshot(hp: 79, maxHp: 100, coins: 10, wave: 2, wavesTotal: 3,
-                secondsLeft: 30, dashTenths: 0, alive: 5, kills: 7).Diff(baseline), "血量");
-
-            Assert.AreEqual(HudField.Hp, Snapshot(hp: 80, maxHp: 110, coins: 10, wave: 2, wavesTotal: 3,
-                secondsLeft: 30, dashTenths: 0, alive: 5, kills: 7).Diff(baseline), "生命上限变了，血条比例也变了");
-
-            Assert.AreEqual(HudField.Coins, Snapshot(hp: 80, maxHp: 100, coins: 11, wave: 2, wavesTotal: 3,
-                secondsLeft: 30, dashTenths: 0, alive: 5, kills: 7).Diff(baseline), "金币");
-
-            Assert.AreEqual(HudField.Wave, Snapshot(hp: 80, maxHp: 100, coins: 10, wave: 3, wavesTotal: 3,
-                secondsLeft: 30, dashTenths: 0, alive: 5, kills: 7).Diff(baseline), "波次");
-
-            Assert.AreEqual(HudField.WaveTime, Snapshot(hp: 80, maxHp: 100, coins: 10, wave: 2, wavesTotal: 3,
-                secondsLeft: 29, dashTenths: 0, alive: 5, kills: 7).Diff(baseline), "波次倒计时");
-
-            Assert.AreEqual(HudField.Dash, Snapshot(hp: 80, maxHp: 100, coins: 10, wave: 2, wavesTotal: 3,
-                secondsLeft: 30, dashTenths: 18, alive: 5, kills: 7).Diff(baseline), "冲刺冷却");
-
-            Assert.AreEqual(HudField.AliveEnemies, Snapshot(hp: 80, maxHp: 100, coins: 10, wave: 2, wavesTotal: 3,
-                secondsLeft: 30, dashTenths: 0, alive: 6, kills: 7).Diff(baseline), "存活敌人数");
-
-            Assert.AreEqual(HudField.Kills, Snapshot(hp: 80, maxHp: 100, coins: 10, wave: 2, wavesTotal: 3,
-                secondsLeft: 30, dashTenths: 0, alive: 5, kills: 8).Diff(baseline), "击杀数");
+            Assert.AreEqual(HudField.Hp, Snapshot(hp: 79).Diff(baseline), "生命");
+            Assert.AreEqual(HudField.Hp, Snapshot(hasPlayer: false).Diff(baseline), "玩家缺席要让血条文字换掉");
+            Assert.AreEqual(HudField.Progress, Snapshot(xp: 5).Diff(baseline), "经验");
+            Assert.AreEqual(HudField.Progress, Snapshot(level: 4).Diff(baseline), "等级");
+            Assert.AreEqual(HudField.RunTime, Snapshot(secondsLeft: 29).Diff(baseline), "倒计时");
+            Assert.AreEqual(HudField.RunTime, Snapshot(threat: 3).Diff(baseline), "威胁");
+            Assert.AreEqual(HudField.Dash, Snapshot(dash: 18, dashRatio: 0.1f).Diff(baseline), "冲刺冷却");
+            Assert.AreEqual(HudField.Dash, Snapshot(dashRatio: 0.5f).Diff(baseline), "冲刺进度条");
+            Assert.AreEqual(HudField.AliveEnemies, Snapshot(alive: 6).Diff(baseline), "存活敌人");
+            Assert.AreEqual(HudField.Kills, Snapshot(kills: 8).Diff(baseline), "击杀");
+            Assert.AreEqual(HudField.Build, Snapshot(weapons: 3).Diff(baseline), "武器数");
+            Assert.AreEqual(HudField.Build, Snapshot(companions: 2).Diff(baseline), "旅伴数");
+            Assert.AreEqual(HudField.Build, Snapshot(buildRevision: 1).Diff(baseline),
+                "武器/旅伴升级、组合触发要让装备栏重拼");
+            Assert.AreEqual(HudField.Boss, Snapshot(boss: true, bossHp: 1f).Diff(baseline), "BOSS 条");
+            Assert.AreEqual(HudField.Boss, Snapshot(bossName: "深渊守望").Diff(baseline), "BOSS 名字");
+            Assert.AreEqual(HudField.Boss, Snapshot(boss: true, bossHp: 1f, bossEnraged: true).Diff(
+                Snapshot(boss: true, bossHp: 1f)), "狂暴后缀");
         }
 
         [Test]
         public void SeveralChangesAccumulateIntoOneDirtyMask()
         {
-            HudValues baseline = Snapshot(hp: 80, maxHp: 100, coins: 10, wave: 2, wavesTotal: 3, secondsLeft: 30,
-                dashTenths: 0, alive: 5, kills: 7);
+            HudValues baseline = Snapshot();
+            HudValues next = Snapshot(xp: 8, kills: 9, weapons: 4);
 
-            HudValues next = Snapshot(hp: 80, maxHp: 100, coins: 40, wave: 2, wavesTotal: 3, secondsLeft: 30,
-                dashTenths: 0, alive: 5, kills: 9);
-
-            Assert.AreEqual(HudField.Coins | HudField.Kills, next.Diff(baseline),
-                "一次变两项就要两项都写，不能写成\"变了就全刷\"或\"变了只刷第一项\"");
-        }
-
-        /// <summary>
-        /// 快照的取数口：血、比例、金币、波次、倒计时、存活敌人数、击杀数全都来自 Model / Controller。
-        /// 这里用真实的 PlayerModel / RunState / RunController / EnemySystem 拼一份，避免自己造数自己验。
-        /// </summary>
-        [Test]
-        public void SnapshotReadsTheModelInsteadOfRecomputingIt()
-        {
-            var bus = new EventBus();
-            var player = new PlayerModel(100f, 5f, 15f, 0.15f, 2f, ArenaHalf);
-            var state = new RunState();
-            var combatRandom = new DeterministicRandom(Seed);
-            var enemies = new EnemySystem(player, ArenaHalf, combatRandom);
-
-            var run = new RunController(player, state, Waves(60f), bus, Seed, "Scavenger");
-            run.StartRun();
-            bus.Flush();
-
-            // 推进 30 秒：波次倒计时应该剩 30 秒
-            int steps = Mathf.RoundToInt(30f / Dt);
-            for (int i = 0; i < steps; i++) run.Tick(Dt);
-
-            player.HP = 60f;
-            state.AddCoins(42);
-            enemies.Spawn(CrawlerDef(), new Vector2(1f, 0f));
-            enemies.Spawn(CrawlerDef(), new Vector2(2f, 0f));
-            enemies.Spawn(CrawlerDef(), new Vector2(3f, 0f));
-
-            bus.Publish(new UnitDied(new UnitId(2), UnitId.None, 0f, 0f));
-            bus.Flush();
-
-            HudValues values = HudValues.From(player, state, run, enemies);
-
-            Assert.AreEqual(60, values.Hp);
-            Assert.AreEqual(100, values.MaxHp);
-            Assert.AreEqual(0.6f, values.HpRatio, 1e-5f);
-            Assert.AreEqual(42, values.Coins);
-            Assert.AreEqual(1, values.WaveIndex);
-            Assert.AreEqual(1, values.WavesTotal, "这一波测试只搭了配置里的一波");
-            Assert.AreEqual(30, values.WaveSecondsLeft, "60 秒的波跑了 30 秒，剩 30 秒（向上取整）");
-            Assert.AreEqual(3, values.AliveEnemies);
-            Assert.AreEqual(1, values.Kills, "击杀数读 RunController 数到的那一个");
-
-            // 什么都没变的下一帧：不产生任何写入
-            Assert.AreEqual(HudField.None, HudValues.From(player, state, run, enemies).Diff(values));
+            Assert.AreEqual(HudField.Progress | HudField.Kills | HudField.Build, next.Diff(baseline));
         }
 
         [Test]
-        public void DashTenthsClipToZeroWhenReady()
+        public void FrozenIsControlStateAndDoesNotDirtyAnyField()
         {
-            var player = new PlayerModel(100f, 5f, 15f, 0.15f, 2f, ArenaHalf);
-            var state = new RunState();
-            state.WavesTotal = 3;
+            // 冻结只影响 HudView 要不要写控件；它本身不是显示项，不该混进差集里。
+            HudValues baseline = Snapshot();
+            HudValues frozen = Snapshot(frozen: true);
 
-            player.DashCooldownTimer = 0f;
-            Assert.AreEqual(0, HudValues.From(player, state, null, null).DashTenths, "冷却为 0 显示就绪");
-
-            player.DashCooldownTimer = 0.04f;
-            Assert.AreEqual(1, HudValues.From(player, state, null, null).DashTenths,
-                "0.04 秒的残余要按 1 档算：舍成 0 就再也不会因为\"变成 0\"刷成\"就绪\"");
-
-            player.DashCooldownTimer = 1.24f;
-            Assert.AreEqual(13, HudValues.From(player, state, null, null).DashTenths);
+            Assert.AreEqual(HudField.None, frozen.Diff(baseline));
+            Assert.IsTrue(frozen.Frozen);
         }
 
-        /// <summary>
-        /// 商店与结算里模拟不推进，HUD 只让金币跟着走（买入、刷新会改它），其余战斗数值一概不写。
-        /// 这条掩码就是 HudView 里那一步，写成断言免得以后改回"每项都刷"。
-        /// </summary>
         [Test]
-        public void FrozenPhaseOnlyLetsCoinsThrough()
+        public void MissingDependenciesProduceASafeSnapshot()
         {
-            HudValues baseline = Snapshot(hp: 80, maxHp: 100, coins: 10, wave: 2, wavesTotal: 3, secondsLeft: 30,
-                dashTenths: 0, alive: 5, kills: 7);
+            // 装配半途失败（没有玩家/系统）时也能取一份能直接写进控件的快照，不抛异常、不出现空名字。
+            HudValues values = HudValues.From(null, null, null, null, null, null, bossEnraged: false);
 
-            HudValues next = Snapshot(hp: 70, maxHp: 100, coins: 20, wave: 2, wavesTotal: 3, secondsLeft: 0,
-                dashTenths: 0, alive: 0, kills: 7);
-
-            HudField dirty = next.Diff(baseline) & HudField.Coins;
-
-            Assert.AreEqual(HudField.Coins, dirty, "冻结期间只有金币能进刷新");
-        }
-
-        /// <summary>
-        /// 冻结期间没写的项必须留在"上一次写过"的基准里：
-        /// 否则解冻那一帧的差值算不出来，血条与倒计时会一直停在冻结前的数字。
-        /// </summary>
-        [Test]
-        public void MergeKeepsFieldsThatWereNotWritten()
-        {
-            HudValues shown = Snapshot(hp: 80, maxHp: 100, coins: 10, wave: 2, wavesTotal: 3, secondsLeft: 30,
-                dashTenths: 0, alive: 5, kills: 7);
-            HudValues next = Snapshot(hp: 70, maxHp: 100, coins: 20, wave: 2, wavesTotal: 3, secondsLeft: 0,
-                dashTenths: 0, alive: 0, kills: 7);
-
-            HudValues stored = shown.Merge(next, HudField.Coins);
-
-            Assert.AreEqual(20, stored.Coins, "写过的项跟着新值");
-            Assert.AreEqual(80, stored.Hp, "没写的项保留旧值");
-            Assert.AreEqual(30, stored.WaveSecondsLeft);
-            Assert.AreEqual(5, stored.AliveEnemies);
-
-            // 解冻后：没写的那几项重新算作变化，一次补齐
-            HudField dirty = next.Diff(stored);
-            Assert.AreEqual(HudField.Hp | HudField.WaveTime | HudField.AliveEnemies, dirty,
-                "解冻那一帧要把冻结期间漏下的项都补上：" + dirty);
-        }
-
-        // ---- 装配 ----
-
-        static HudValues Snapshot(int hp, int maxHp, int coins, int wave, int wavesTotal, int secondsLeft,
-            int dashTenths, int alive, int kills)
-        {
-            return new HudValues(hp, maxHp, maxHp > 0 ? (float)hp / maxHp : 0f, coins, wave, wavesTotal, secondsLeft,
-                dashTenths, alive, kills);
-        }
-
-        /// <summary>照抄 Wave.json 的一波：时长可变，间隔 / 数量 / 上限 / 奖励与表里一致。</summary>
-        static List<WaveDef> Waves(float duration)
-        {
-            return new List<WaveDef>
-            {
-                new WaveDef
-                {
-                    Id = "W1", Index = 1, Duration = duration, SpawnInterval = 1.2f,
-                    SpawnCountMin = 1, SpawnCountMax = 2, EnemyPool = new[] { "Crawler" },
-                    ConcurrentCap = 40, CoinReward = 60, BossId = ""
-                },
-            };
-        }
-
-        /// <summary>照抄 Enemy.json 的 Crawler：HUD 只用到存活数，数值给够就行。</summary>
-        static EnemyDef CrawlerDef()
-        {
-            return new EnemyDef
-            {
-                Id = "Crawler", Name = "爬虫", Behaviour = EnemyBehaviourType.Chase,
-                HP = 12f, Damage = 6f, Speed = 3f, AttackRange = 0.6f, AttackInterval = 1f,
-                CoinDrop = 1, BodyRadius = 0.35f
-            };
+            Assert.IsFalse(values.HasPlayer);
+            Assert.IsFalse(values.Frozen);
+            Assert.AreEqual(0f, values.HpRatio);
+            Assert.AreEqual(0f, values.DashRatio);
+            Assert.AreEqual(string.Empty, values.BossName);
+            Assert.IsFalse(values.BossActive);
+            Assert.AreEqual(1, values.Level);
+            Assert.AreEqual(1, values.Threat);
         }
     }
 }

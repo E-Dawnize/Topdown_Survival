@@ -1,4 +1,62 @@
 # 迭代进度
+> 文档目录：[docs/README.md](README.md)
+
+> 下面 I0 / I1 / I2 的记录保留当时进度。I2 之后当前工作区又做了一轮 P0/P1 修复与 v0.3 玩法重做；v0.3 见第一节，当前测试数为 227（222 EditMode + 5 PlayMode：相机装配、武器动作）。
+
+## v0.3.4 攻击可见与 HUD 装备栏
+
+状态：代码与自动化验证完成；主工程 Unity Play 的整条流程与观感仍未手测。
+
+| 任务 | 状态 | 证据 |
+|---|---|---|
+| 近战挥砍可见 | 完成 | `CombatEffects` 扇形弧线，半径/半角取 `WeaponModel.LastRange/SpreadDeg`，延迟到 `MeleeWindowStart` 才亮；模拟判定与弧线共用同一个窗口 |
+| 敌人攻击可见 | 完成 | 近战/冲锋起手红环 + 出手红扇；投手蓄力后发射可见弹丸（`EnemyProjectileSystem` + 暗红箭头视图）；伤害只在起手结束/弹丸命中时结算 |
+| 范围伤害可见 | 完成 | 碰撞、爆炸、链电、环绕刀、反伤结算后发 `CombatAreaEffect`，`CombatEffectView` 画不同颜色范围环 |
+| HUD 装备栏 | 完成 | `BuildController.LoadoutRevision` 驱动左上装备栏重拼：武器/旅伴及等级、组合、数值卡数、指定 buff/道具名字；受击弹出伤害数字 |
+| 测试 | 完成 | EditMode 219→222（起手可躲、冲锋、远程弹丸、碰撞范围事件、HUD 版本号）；PlayMode 5/5 |
+
+验证：独立工程副本 Unity 2022.3.34f1c1 批量模式 EditMode 222/222、PlayMode 5/5；`dotnet build` Runtime 与测试工程 0 错 0 警告。
+
+## v0.3 玩法重做（单局时间轴 + 经验构筑 + BOSS）
+
+状态：完成，命令行验证通过；Unity Play 未手测。
+
+| 任务 | 状态 | 证据 |
+|---|---|---|
+| 单局时间轴替代波次 | 完成 | `DirectorSystem` 8 段，0–600 秒；同屏上限 30→140，怪种池 Crawler→Ravager，精英概率 0→14% |
+| 经验掉落替代金币 | 完成 | `PickupSystem` 只掉经验/心；`RunState.AddExperience` 处理跨级与排队；真实配置 10 分钟升到 30 级 |
+| 升级三选一 | 完成 | `BuildController` + `UpgradeView`；Level 表 30 级、3/4 张卡、稀有度上浮、重抽 1 次 |
+| 武器构筑 | 完成 | 6 把武器、4 槽、5 级；伤害 +30%/级、间隔 ×0.92/级、Lv3 弹道、Lv4 穿透 |
+| 旅伴构筑 | 完成 | 6 个旅伴、4 队、3 级；四阵营 2/4 件羁绊沿用 |
+| 数值构筑 | 完成 | 14 张数值卡；射程/护甲/回复/碰撞伤害已接进战斗管线并有测试 |
+| buff 构筑 | 完成 | 12 张 buff；击杀叠攻速/回血、受击叠甲、低血开关、周期回复、Reset 回滚 |
+| BOSS | 完成 | 10:00 缝线巨偶；27900 血、12 秒召唤 4 小怪、半血狂暴；击杀通关 |
+| HUD / 结算 | 完成 | 等级/经验条、威胁+BOSS 倒计时、BOSS 血条、构筑摘要；结算等级/击杀/武器/旅伴 |
+| 配置表重做 | 完成 | 9 sheet：Character/Weapon/Companion/Enemy/Buff/Director/Level/Upgrade/Balance；删除 Wave/Item |
+| 文档 | 完成 | GDD v0.3、BUILD_SYSTEM、TECH_DESIGN v0.3、STATUS、README |
+
+验证：
+
+- `dotnet build Game.Runtime.csproj -t:Rebuild` 与测试工程：0 错 0 警告。
+- Unity Test Framework（EditMode）：206 / 206 通过；PlayMode 相机 + 武器动作：2 / 2 通过。
+- 真实配置全流程：36007 步 / 约 0.5–1.1 秒（托管侧）；等级 30、击杀 1592、最高同屏 101、武器 4、旅伴 3、组合 1、buff 4；10:00 切 BOSS，清空后胜利。
+- 未验证：Unity Play、UI 排版、渲染帧率、手感与平衡。
+
+### v0.3.1：手感与构筑补强
+
+| 任务 | 状态 | 证据 |
+|---|---|---|
+| 前期刷怪密度 | 完成 | 0–45 秒 2.2 秒 1 只、上限 12；0:45–1:45 上限 20；后期上限 120 |
+| 机制道具 | 完成 | 燃烧弹/导电/环绕刀/吸血獠牙/荆棘甲，分别接 OnKillExplode/OnHitChain/OrbitDamage/Lifesteal/OnHurtThorns |
+| 组合效果 | 完成 | 4 个标签组合：过载/血契/弩阵/旋风；BuildController 选卡后重算，HUD 弹出提示 |
+| 构筑池扩充 | 完成 | 38→43 张卡；buff/机制 21 行（17 张卡 + 4 个组合 buff） |
+| 旅伴 AI | 完成 | Follow/Aggro/Kiter/Guard；AggroRadius/PreferredRange/LeashDistance 配置 |
+| HUD 血条 | 完成 | 预制体 HpFill/DashFill 是 Filled 但 Sprite 为空；运行时补 1×1 白图，fillAmount 才有效 |
+| 相机跟随 | 完成 | Run/TestArena：矩形死区 0.14、SmoothDamp 0.32 秒；角色在框内镜头不动，出框后横/纵两轴一起阻尼追上，停下停在框边 |
+| 武器表现 | 完成 | 6 把武器全部有几何体模型；SmoothDamp 追玩家身后槽位形成拖尾；剑/匕/锤/弓/弩/灵球六种动作由 `ShotsFired` 驱动；玩家 4 槽、旅伴单槽反向缩放锚点 |
+| 测试 | 完成 | 183→208 用例（206 EditMode + 2 PlayMode）；真实配置全流程击杀 1592、最高同屏 101、组合 1、buff 4 |
+
+---
 
 ## I0 工程基座
 
@@ -147,10 +205,47 @@ HUD 提前做了（原计划在 I2-9）：没有敌人时血条不会掉，所�
 | I2-3 | 金币掉落磁吸 | 完成 | 1 币 + 25% 心，吸附半径读 `PickupRadius`，心回血 clamp |
 | I2-4 | ShopController | 完成 | 60000 抽分布与权重差 0.12pp 内，保底 8 次，价格与刷新 |
 | I2-5 | 商店 UI | 完成 | 键盘全流程，选格逻辑抽成 `ShopNavigator` 纯类 |
-| I2-6 | 旅伴 | 完成 | 环位跟随、4 米瞬移、每旅伴一套武器、重复购买升级 |
+| I2-6 | 旅伴 | 完成 | 环位 + 速度拖尾 + SmoothDamp 阻尼跟随、4 米瞬移、每旅伴一套武器、重复购买升级 |
 | I2-7 | 羁绊 | 完成 | 2/4 件触发，重算先整条退掉再重建，掉档逐项回基线 |
 | I2-8 | 道具骨架 | 部分 | 属性型道具生效；`EffectType` 未接，触发型道具只扣钱 |
 | I2-9 | HUD | 完成 | 快照差值只写变化的项，补波次倒计时、场上敌人、击杀数 |
 | I2-10 | 死亡与结算 | 完成 | 结算面板、场景重载重开、跨局状态重置 |
 
 配置表内容不足导致的两处退化：道具只有 4 件撑不满 6 格去重（每间商店都会摆出紫金），旅伴只有 3 个每阵营一个（4 件羁绊到不了）。两处都在等 I3 补内容。
+
+## P0/P1 修复（当前工作区）
+
+这一轮不改玩法内容，只修底层边界：
+
+- 启动：MainMenu 成为构建入口，Boot 禁用；AppRoot 缺 RunLoop 时显示错误面板；配置失败可见；种子在装配前确定。
+- 输入与时间：InputBuffer 锁存按钮边沿；RunClock 改为 BeginFrame + TryConsumeStep，定格不再吞掉已计时步数。
+- 实体：UnitIdAllocator + UnitKind；玩家、敌人、旅伴 ID 唯一；投射物/近战/视图改用稳定 ID。
+- 生命周期：RunController.StartRun 只允许 Idle 调用一次，GameOver 后二次调用抛异常。
+- 事件：EventChannel 每轮处理快照，EventBus 总预算防止同类型自触发；订阅者异常隔离。
+- 输入模式：InputService.OnEnable 按当前 UiMode 恢复 Map。
+- 调试：F2/F3 移到 DebugOverlay，限制在编辑器/开发构建。
+- 相机：`CameraFocus` 矩形死区 + SmoothDamp；相机朝向固定，Transposer 只做定位；CameraPreset 扩展为 Run / TestArena / Boss / Menu 四份。
+
+验证：`Game.Runtime`、`Game.Tests.EditMode`、`Game.Tests.PlayMode` 编译 0 错误 0 警告；206 个 EditMode 用例 + 2 条 PlayMode 用例通过。Unity PlayMode 的完整流程仍未验证。
+
+遗留：Test_Arena 的相机边界（20）与玩家边界（Balance 的 67）不一致；Boss/Menu 预设尚未接入多相机模式。
+
+## v0.3.3 武器资产管线（完成）
+
+这一轮把"运行时用 Cube/Cylinder/Sphere 拼武器"换成真实资产管线：
+
+- `Assets/Art/Models/Weapons/`：Quaternius / KayKit 的 CC0 FBX（弓、弩、剑、双匕、战锤、灵球），许可与来源写在子目录 `LICENSE.txt` 与 `README.md`。
+- `WeaponPrefabBuilder`：按最长边缩放、按握点对齐到 prefab 原点、补闪光/灵球光晕；菜单 `Tools/Weapons/Create Missing Visual Prefabs` 只补缺失，`Force Rebuild` 才覆盖；生成 6 个 prefab 与 `Assets/Resources/WeaponVisualCatalog.asset`。
+- `WeaponVisualCatalog`：Id → prefab / AttackStyle / AttackDuration 的唯一映射；运行时删除 `WeaponVisualDescriptor` 与 `WeaponGeometry`，不再按 Id 拼几何体。
+- `WeaponVisual`：只操作 prefab 根 Transform（跟随、瞄准、攻击姿态、闪光）；缺条目/缺 prefab 直接报错，不做白模兜底。
+- `WeaponRackView` / `CompanionView`：从 catalog 取条目实例化；玩家四槽与旅伴锚点行为不变。
+
+验证：独立工程副本 EditMode 219 / 219、PlayMode 5 / 5；`WeaponVisualCatalogTests` 5 条检查真实 `Weapon.json` 的每把武器都有 prefab、六种动作互异、近战动作盖住判定窗口、远程短于冷却；`ProjectileArrowTests` 1 条检查箭 prefab 的长轴与缩放；`WeaponVisualPlayTests` 新增弓箭搭箭窗口、“搭箭交接给投射物池”和箭视觉直线路径用例。6 个 prefab 在 Run 场景用局内正交相机渲染验收（侧视、俯视、四槽武器架、弓/箭近景）。
+
+### 弓箭与投射物补完
+
+- 新增 `Arrow.fbx`（Quaternius，CC0）；`WeaponPrefabBuilder` 同时生成 `Assets/Prefabs/Projectiles/Projectile_Arrow.prefab`（`ProjectileView` + 箭模型，长轴 +Z，由 `UnitPrefabMap` 引用）和弓 prefab 里的 `NockedArrow`。弓 prefab 的 `NockedArrow` 直接是 `Projectile_Arrow.prefab` 实例；开火时这个实例被摘下来交给 `ProjectileNockedHandoff`/`ProjectileViewPool`，飞出去的就是搭在弓上的那支箭，随后 `WeaponVisual` 用 `_nockedArrowPrefab` 复制新搭箭。
+- `ProjectileView` 不再由池创建方块，改为实例化箭 prefab；保留按玩家/旅伴上色与缩放。
+- `WeaponVisual` 在冷却最后 0.28 秒把搭箭后拉 0.20 米，`ShotsFired` 变化时收起并播放释放后坐；弓 prefab 的 `WeaponVisual._nockedArrow` 由 builder 绑定。
+- `WeaponRackView` 的世界 yaw 用 `SmoothDampAngle` 追玩家朝向（0.16 秒），位置仍跟玩家根节点；转向时武器排平滑甩到新一侧，不再跟着角色瞬转。
+- 修正弓的朝向：Quaternius 弓的弓弧在本地 XY 平面，Bow prefab 的 `Model` 序列化为 `-90°Y + 30°Z`，箭在弓平面内飞出，不再垂直于弓平面。方向配置归 prefab，builder 的 Force Rebuild 从已有 prefab 读回旋转。

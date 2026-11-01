@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Game.Config;
 using Game.Core;
 using Game.Model;
@@ -27,8 +28,44 @@ namespace Game.Tests
                 Speed = speed,
                 AttackRange = attackRange,
                 AttackInterval = attackInterval,
-                CoinDrop = 1,
-                BodyRadius = BodyRadius
+                XpValue = 1,
+                BodyRadius = BodyRadius, Scale = 1f
+            };
+        }
+
+        static EnemyDef RangedDef(float hp = 100f, float damage = 8f, float speed = 2f, float attackRange = 5f,
+            float attackInterval = 2f)
+        {
+            return new EnemyDef
+            {
+                Id = "test_thrower",
+                Name = "测试投手",
+                Behaviour = EnemyBehaviourType.Ranged,
+                HP = hp,
+                Damage = damage,
+                Speed = speed,
+                AttackRange = attackRange,
+                AttackInterval = attackInterval,
+                XpValue = 1,
+                BodyRadius = BodyRadius, Scale = 1f
+            };
+        }
+
+        static EnemyDef ChargeDef(float hp = 100f, float damage = 10f, float speed = 2.5f, float attackRange = 4f,
+            float attackInterval = 3f)
+        {
+            return new EnemyDef
+            {
+                Id = "test_charger",
+                Name = "测试冲锋兵",
+                Behaviour = EnemyBehaviourType.Charge,
+                HP = hp,
+                Damage = damage,
+                Speed = speed,
+                AttackRange = attackRange,
+                AttackInterval = attackInterval,
+                XpValue = 1,
+                BodyRadius = BodyRadius, Scale = 1f
             };
         }
 
@@ -170,23 +207,30 @@ namespace Game.Tests
             var player = MakePlayer(1000f);
             var system = new EnemySystem(player, ArenaHalf);
 
-            // 伤害 5、间隔 0.5 秒，敌人就站在玩家身上：不会被追击推力带走，纯粹考结算节奏
+            // 伤害 5、间隔 0.5 秒，敌人就站在玩家身上：不会被追击推力带走，纯粹考结算节奏。
+            // 现在每次出手前有 0.32 秒起手预警，伤害只在起手结束那一步结算。
             EnemyDef def = ChaseDef(damage: 5f, attackInterval: 0.5f, attackRange: 1.5f);
             system.Spawn(def, Vector2.zero);
 
             Vector2 playerPos = Vector2.zero;
 
             RunSteps(system, playerPos, 1);
-            Assert.AreEqual(995f, player.HP, 1e-3f, "第一步就该结第一次接触伤害");
+            Assert.AreEqual(1000f, player.HP, 1e-3f, "起手阶段不该扣血");
 
-            // 再走 10 步（合计 0.18 秒）仍远没到 0.5 秒的间隔，不能重复扣血
+            RunSteps(system, playerPos, 19);
+            Assert.AreEqual(1000f, player.HP, 1e-3f, "起手没结束前都不该扣血");
+
+            RunSteps(system, playerPos, 1);
+            Assert.AreEqual(995f, player.HP, 1e-3f, "起手结束那一步才结算第一次伤害");
+
+            // 再走 10 步（合计 0.18 秒）仍没到（0.5 - 0.32）秒的冷却，不能重复扣血
             RunSteps(system, playerPos, 10);
-            Assert.AreEqual(995f, player.HP, 1e-3f, "间隔没到就重复扣血了");
+            Assert.AreEqual(995f, player.HP, 1e-3f, "冷却没到就重复扣血了");
 
-            // 10 秒里按 0.5 秒一次应当是 20 次上下（首步也算一次），绝不是每步都扣
+            // 10 秒里按 0.5 秒一次应当是 20 次上下（首步起手也算一次），绝不是每步都扣
             RunSteps(system, playerPos, 600);
             float hits = (1000f - player.HP) / 5f;
-            Assert.GreaterOrEqual(hits, 19f, "10 秒内结算次数 " + hits + " 太少");
+            Assert.GreaterOrEqual(hits, 18f, "10 秒内结算次数 " + hits + " 太少");
             Assert.LessOrEqual(hits, 22f, "10 秒内结算次数 " + hits + " 太多");
         }
 
@@ -262,19 +306,76 @@ namespace Game.Tests
         [Test]
         public void ZeroDodgeStillTakesContactDamageAgainstSameRoll()
         {
-            // 同一条零骰子，Dodge = 0 时该照常扣血：证明“开始掷骰”本身没把结算改坏
+            // 同一条零骰子，Dodge = 0 时该照常扣血：证明“开始掷骰”本身没把结算改坏。
+            // 近战现在先起手 0.32 秒，第 21 个固定步才真正结算。
             var player = MakePlayer(1000f);
             var system = new EnemySystem(player, ArenaHalf, new ZeroRoll());
             system.Spawn(ChaseDef(damage: 20f, attackInterval: 0.2f), Vector2.zero);
 
+            RunSteps(system, Vector2.zero, 21);
+
+            Assert.AreEqual(980f, player.HP, 1e-3f, "Dodge = 0 时起手结束就该结第一次 20 点近战伤害");
+        }
+
+        [Test]
+        public void MeleeAttackTelegraphsAndMissesIfPlayerLeaves()
+        {
+            var player = MakePlayer(1000f);
+            var system = new EnemySystem(player, ArenaHalf);
+            int slot = system.Spawn(ChaseDef(damage: 20f, attackRange: 1.5f, attackInterval: 2f),
+                new Vector2(1f, 0f));
+
             RunSteps(system, Vector2.zero, 1);
 
-            Assert.AreEqual(980f, player.HP, 1e-3f, "Dodge = 0 时第一步就该结第一次 20 点接触伤害");
+            Assert.IsTrue(system.Get(slot).IsWindingUp, "进入攻击距离后应该先起手，不能立刻掉血");
+            Assert.AreEqual(1000f, player.HP, 1e-3f, "起手阶段不该扣血");
+
+            // 玩家侧移离开：敌人锁定的是起手瞬间的方向，这一刀应该落空
+            RunSteps(system, new Vector2(10f, 0f), 30);
+            Assert.AreEqual(1000f, player.HP, 1e-3f, "玩家离开后近战应该落空");
+        }
+
+        [Test]
+        public void RangedEnemyFiresAVisibleProjectileThatMustReachThePlayer()
+        {
+            var player = MakePlayer(1000f);
+            var system = new EnemySystem(player, ArenaHalf);
+            system.Spawn(RangedDef(damage: 8f, attackInterval: 3f), new Vector2(4f, 0f));
+
+            Vector2 playerPos = Vector2.zero;
+
+            // 起手 0.55 秒：这期间玩家不该掉血
+            RunSteps(system, playerPos, 40);
+            Assert.AreEqual(1000f, player.HP, 1e-3f, "远程起手期间不该扣血");
+            Assert.Greater(system.Projectiles.Count, 0, "起手结束应该发射一发可见弹丸");
+
+            // 弹丸 9 米/秒，4 米距离要飞 0.45 秒左右；落地才扣血
+            RunSteps(system, playerPos, 60);
+            Assert.AreEqual(992f, player.HP, 1e-3f, "弹丸飞到玩家身上才扣一次血");
+        }
+
+        [Test]
+        public void ChargeEnemyOnlyDamagesWhenItsBodyReachesThePlayer()
+        {
+            var player = MakePlayer(1000f);
+            var system = new EnemySystem(player, ArenaHalf);
+            int slot = system.Spawn(ChargeDef(damage: 10f, attackRange: 4f, attackInterval: 3f),
+                new Vector2(4f, 0f));
+
+            Vector2 playerPos = Vector2.zero;
+
+            RunSteps(system, playerPos, 1);
+            Assert.IsTrue(system.Get(slot).IsWindingUp, "冲锋前应该先蓄力");
+            Assert.AreEqual(1000f, player.HP, 1e-3f, "蓄力阶段不该扣血");
+
+            // 蓄力 0.5 秒 + 冲锋 0.3 秒：撞到玩家身体才结算一次
+            RunSteps(system, playerPos, 60);
+            Assert.AreEqual(990f, player.HP, 1e-3f, "冲锋撞到玩家后只结算一次");
         }
 
         static EnemyModel FindAlive(EnemySystem system, int index)
         {
-            // 槽位号是稳定的，但测试里按"第几个生成"数，所以扫一遍存活槽位
+            // 槽位号是稳定的，但测试里按“第几个生成”数，所以扫一遍存活槽位
             int seen = 0;
             for (int slot = 0; slot < system.SlotCapacity; slot++)
             {
@@ -284,6 +385,51 @@ namespace Game.Tests
                 seen++;
             }
             return null;
+        }
+
+        // ---- 共享索敌（武器 / 旅伴移动 / 旅伴开火共用） ----
+
+        [Test]
+        public void FindNearestAliveSkipsDeadAndRemovedSlots()
+        {
+            var system = new EnemySystem(MakePlayer(), ArenaHalf);
+            int far = system.Spawn(ChaseDef(), new Vector2(4f, 0f));
+            int near = system.Spawn(ChaseDef(), new Vector2(1f, 0f));
+            system.Grid.Rebuild(Vector2.zero, system);
+
+            // 调用方容器里的旧内容必须被清掉：不能把上一轮遗留的槽位号当成这一轮的结果
+            var scratch = new List<int> { 999 };
+            Assert.AreEqual(near, system.FindNearestAliveSlot(Vector2.zero, 6f, scratch));
+            CollectionAssert.DoesNotContain(scratch, 999);
+
+            // 死亡但还没被清理（HP 已是 0）：快照里还在，索敌必须跳过它
+            system.Get(near).HP = 0f;
+            Assert.AreEqual(far, system.FindNearestAliveSlot(Vector2.zero, 6f, scratch));
+
+            // 已移除：快照里还留着旧槽位，但 Get 已经拿不到模型
+            system.Remove(far);
+            Assert.AreEqual(-1, system.FindNearestAliveSlot(Vector2.zero, 6f, scratch), "没有活目标时返回 -1");
+            Assert.IsNull(system.FindNearestAlive(Vector2.zero, 6f, scratch));
+        }
+
+        [Test]
+        public void FindNearestAliveUsesCurrentPositionAndRespectsRadius()
+        {
+            var system = new EnemySystem(MakePlayer(), ArenaHalf);
+            int moved = system.Spawn(ChaseDef(), new Vector2(1f, 0f));
+            int behind = system.Spawn(ChaseDef(), new Vector2(3f, 0f));
+            system.Grid.Rebuild(Vector2.zero, system);
+
+            // 快照里 moved 在 1 米处；模型这一步被推到了 5 米外（还没 Rebuild）。
+            // 索敌要按模型当前位置算，选 3 米的那个，而不是按旧快照选 1 米的。
+            system.Get(moved).Position = new Vector2(5f, 0f);
+
+            var scratch = new List<int>();
+            Assert.AreEqual(behind, system.FindNearestAliveSlot(Vector2.zero, 6f, scratch));
+
+            // 半径边界：快照里 behind 在 3 米处，半径 2.9 时不应该入选
+            Assert.AreEqual(-1, system.FindNearestAliveSlot(Vector2.zero, 2.9f, scratch));
+            Assert.AreEqual(behind, system.FindNearestAliveSlot(Vector2.zero, 3f, scratch), "恰好在半径上也算命中");
         }
     }
 }
