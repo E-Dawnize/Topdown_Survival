@@ -165,7 +165,12 @@ namespace Game.Config
                     throw new ConfigException($"{fileName} 里有记录缺少 Id");
                 }
 
-                map[def.Id] = def.Value;
+                if (map.ContainsKey(def.Id))
+                {
+                    throw new ConfigException($"{fileName} 里 Id '{def.Id}' 重复");
+                }
+
+                map.Add(def.Id, def.Value);
             }
 
             return map;
@@ -232,6 +237,7 @@ namespace Game.Config
             ValidateUpgrades(errors);
             ValidateBuffs(errors);
             ValidateCombos(errors);
+            ValidateBalance(errors);
 
             if (errors.Count > 0)
             {
@@ -419,10 +425,70 @@ namespace Game.Config
                     errors.Add($"Buff.{b.Id}: 既没有 Effect 也没有属性，等于没有效果");
                 }
 
-                if (b.Effect == BuffEffectType.PeriodicHeal && b.Interval <= 0f)
+                bool timed = b.Effect == BuffEffectType.PeriodicHeal ||
+                             b.Effect == BuffEffectType.OnHitChain ||
+                             b.Effect == BuffEffectType.OnHitExplode ||
+                             b.Effect == BuffEffectType.OrbitDamage;
+                if (timed && b.Interval <= 0f)
                 {
-                    errors.Add($"Buff.{b.Id}: 周期回复必须填 Interval");
+                    errors.Add($"Buff.{b.Id}: {b.Effect} 必须填大于 0 的 Interval");
                 }
+            }
+        }
+
+        static readonly string[] RequiredBalanceKeys =
+        {
+            "ArenaHalfExtent", "DashSpeedMultiplier", "DashDuration", "DashCooldown",
+            "WeaponSlots", "WeaponMaxLevel", "WeaponDamagePerLevel", "WeaponCooldownPerLevel",
+            "WeaponProjectileMilestone", "WeaponPierceMilestone", "HeartDropChance", "HeartHeal",
+            "ExperienceCollectCooldown", "EliteHpScale", "EliteDamageScale", "EliteSpeedScale",
+            "EliteXpScale", "EliteScale", "BuildWeightWeapon", "BuildWeightCompanion",
+            "BuildWeightStat", "BuildWeightBuff", "RerollsPerLevel", "LuckRarityWeight",
+        };
+
+        /// <summary>
+        /// Balance 的 key 是运行时契约，不再靠 GetBalance 的 fallback 静默补默认值。
+        /// 缺 key 或关键数值越界都应在启动/导表阶段失败，而不是变成另一套隐藏数值。
+        /// </summary>
+        void ValidateBalance(List<string> errors)
+        {
+            foreach (string key in RequiredBalanceKeys)
+            {
+                if (!_balance.ContainsKey(key)) errors.Add($"Balance: 缺少必需项 '{key}'");
+            }
+
+            CheckRange(errors, "ArenaHalfExtent", 0.01f, float.PositiveInfinity);
+            CheckRange(errors, "DashSpeedMultiplier", 0.01f, float.PositiveInfinity);
+            CheckRange(errors, "DashDuration", 0.01f, float.PositiveInfinity);
+            CheckRange(errors, "DashCooldown", 0.01f, float.PositiveInfinity);
+            CheckRange(errors, "WeaponSlots", 1f, float.PositiveInfinity);
+            CheckRange(errors, "WeaponMaxLevel", 1f, float.PositiveInfinity);
+            CheckRange(errors, "WeaponDamagePerLevel", 0f, float.PositiveInfinity);
+            CheckRange(errors, "WeaponCooldownPerLevel", 0.01f, float.PositiveInfinity);
+            CheckRange(errors, "WeaponProjectileMilestone", 1f, float.PositiveInfinity);
+            CheckRange(errors, "WeaponPierceMilestone", 1f, float.PositiveInfinity);
+            CheckRange(errors, "HeartDropChance", 0f, 1f);
+            CheckRange(errors, "HeartHeal", 0.01f, float.PositiveInfinity);
+            CheckRange(errors, "ExperienceCollectCooldown", 0.01f, float.PositiveInfinity);
+            CheckRange(errors, "EliteHpScale", 0.01f, float.PositiveInfinity);
+            CheckRange(errors, "EliteDamageScale", 0.01f, float.PositiveInfinity);
+            CheckRange(errors, "EliteSpeedScale", 0.01f, float.PositiveInfinity);
+            CheckRange(errors, "EliteXpScale", 0.01f, float.PositiveInfinity);
+            CheckRange(errors, "EliteScale", 0.01f, float.PositiveInfinity);
+            CheckRange(errors, "BuildWeightWeapon", 0f, float.PositiveInfinity);
+            CheckRange(errors, "BuildWeightCompanion", 0f, float.PositiveInfinity);
+            CheckRange(errors, "BuildWeightStat", 0f, float.PositiveInfinity);
+            CheckRange(errors, "BuildWeightBuff", 0f, float.PositiveInfinity);
+            CheckRange(errors, "RerollsPerLevel", 0f, float.PositiveInfinity);
+            CheckRange(errors, "LuckRarityWeight", 0f, float.PositiveInfinity);
+        }
+
+        void CheckRange(List<string> errors, string key, float min, float max)
+        {
+            if (!_balance.TryGetValue(key, out float value)) return;   // 缺失项上面已经报过
+            if (value < min || value > max)
+            {
+                errors.Add($"Balance.{key}: 值 {value} 超出范围 [{min}, {max}]");
             }
         }
 

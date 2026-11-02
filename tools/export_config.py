@@ -309,6 +309,116 @@ def validate_refs(tables, types_by_table):
     return errors
 
 
+def validate_values(tables):
+    """数值区间与运行时会消费的关键字段。
+
+    C# 的 ConfigDatabase.Validate 负责启动时兜底；这里在导表阶段提前失败，
+    避免坏数值先提交成 JSON，等到进游戏才暴露。
+    """
+    errors = []
+
+    def rows(sheet):
+        return tables.get(sheet, (None, None, []))[2]
+
+    def fail(sheet, rec, field, message):
+        errors.append(f"[{sheet}] {rec.get('Id', '?')}.{field}: {message}")
+
+    for rec in rows("Character"):
+        if rec.get("BaseHP", 0) <= 0: fail("Character", rec, "BaseHP", "必须大于 0")
+        if rec.get("BaseMoveSpeed", 0) < 0: fail("Character", rec, "BaseMoveSpeed", "不能为负")
+        if rec.get("BaseAttackInterval", 0) <= 0:
+            fail("Character", rec, "BaseAttackInterval", "必须大于 0")
+
+    for rec in rows("Weapon"):
+        if rec.get("Cooldown", 0) <= 0: fail("Weapon", rec, "Cooldown", "必须大于 0")
+        if rec.get("Range", 0) <= 0: fail("Weapon", rec, "Range", "必须大于 0")
+        if rec.get("Projectiles", 0) < 1: fail("Weapon", rec, "Projectiles", "至少为 1")
+        if rec.get("Pierce", 0) < 0: fail("Weapon", rec, "Pierce", "不能为负")
+        if rec.get("Kind") == "Ranged" and rec.get("ProjectileSpeed", 0) <= 0:
+            fail("Weapon", rec, "ProjectileSpeed", "远程武器必须大于 0")
+
+    for rec in rows("Companion"):
+        if rec.get("FollowRadius", 0) <= 0: fail("Companion", rec, "FollowRadius", "必须大于 0")
+        if rec.get("MaxHP", 0) <= 0: fail("Companion", rec, "MaxHP", "必须大于 0")
+
+    for rec in rows("Enemy"):
+        if rec.get("Tier", 0) < 1: fail("Enemy", rec, "Tier", "至少为 1")
+        if rec.get("HP", 0) <= 0: fail("Enemy", rec, "HP", "必须大于 0")
+        if rec.get("Damage", 0) < 0: fail("Enemy", rec, "Damage", "不能为负")
+        if rec.get("Speed", 0) < 0: fail("Enemy", rec, "Speed", "不能为负")
+        if rec.get("AttackRange", 0) < 0: fail("Enemy", rec, "AttackRange", "不能为负")
+        if rec.get("AttackInterval", 0) <= 0: fail("Enemy", rec, "AttackInterval", "必须大于 0")
+        if rec.get("XpValue", 0) < 0: fail("Enemy", rec, "XpValue", "不能为负")
+        if rec.get("BodyRadius", 0) <= 0: fail("Enemy", rec, "BodyRadius", "必须大于 0")
+        if rec.get("Scale", 0) <= 0: fail("Enemy", rec, "Scale", "必须大于 0")
+
+    for rec in rows("Director"):
+        if rec.get("StartTime", 0) < 0: fail("Director", rec, "StartTime", "不能为负")
+        if rec.get("EndTime", 0) <= rec.get("StartTime", 0):
+            fail("Director", rec, "EndTime", "必须大于 StartTime")
+        if rec.get("Threat", 0) < 1: fail("Director", rec, "Threat", "至少为 1")
+        if rec.get("SpawnInterval", 0) <= 0: fail("Director", rec, "SpawnInterval", "必须大于 0")
+        if rec.get("SpawnCountMin", 0) <= 0 or rec.get("SpawnCountMin", 0) > rec.get("SpawnCountMax", 0):
+            fail("Director", rec, "SpawnCountMin/Max", "不合法")
+        if rec.get("ConcurrentCap", 0) <= 0: fail("Director", rec, "ConcurrentCap", "必须大于 0")
+        if not (0 <= rec.get("EliteChance", 0) <= 1): fail("Director", rec, "EliteChance", "必须在 0..1")
+        for field in ("HpScale", "DamageScale", "SpeedScale"):
+            if rec.get(field, 0) <= 0: fail("Director", rec, field, "必须大于 0")
+        if not rec.get("EnemyPool"): fail("Director", rec, "EnemyPool", "不能为空")
+        if rec.get("BossAddInterval", 0) < 0: fail("Director", rec, "BossAddInterval", "不能为负")
+        if rec.get("BossAddCount", 0) < 0: fail("Director", rec, "BossAddCount", "不能为负")
+
+    for rec in rows("Level"):
+        if rec.get("Level", 0) < 1: fail("Level", rec, "Level", "至少为 1")
+        if rec.get("XpToNext", 0) <= 0: fail("Level", rec, "XpToNext", "必须大于 0")
+        if rec.get("OfferCount", 0) < 1: fail("Level", rec, "OfferCount", "至少为 1")
+
+    for rec in rows("Upgrade"):
+        if rec.get("Weight", 0) <= 0: fail("Upgrade", rec, "Weight", "必须大于 0")
+        if rec.get("MaxStacks", 0) < 1: fail("Upgrade", rec, "MaxStacks", "至少为 1")
+
+    timed_buffs = {"PeriodicHeal", "OnHitChain", "OnHitExplode", "OrbitDamage"}
+    for rec in rows("Buff"):
+        if rec.get("Duration", 0) < 0: fail("Buff", rec, "Duration", "不能为负")
+        if rec.get("MaxStacks", 0) < 1: fail("Buff", rec, "MaxStacks", "至少为 1")
+        if rec.get("Effect") in timed_buffs and rec.get("Interval", 0) <= 0:
+            fail("Buff", rec, "Interval", "该效果必须大于 0")
+
+    for rec in rows("Combo"):
+        if rec.get("CountA", 0) <= 0: fail("Combo", rec, "CountA", "必须大于 0")
+        if rec.get("TagB") and rec.get("CountB", 0) <= 0:
+            fail("Combo", rec, "CountB", "有 TagB 时必须大于 0")
+
+    required_balance = {
+        "ArenaHalfExtent", "DashSpeedMultiplier", "DashDuration", "DashCooldown",
+        "WeaponSlots", "WeaponMaxLevel", "WeaponDamagePerLevel", "WeaponCooldownPerLevel",
+        "WeaponProjectileMilestone", "WeaponPierceMilestone", "HeartDropChance", "HeartHeal",
+        "ExperienceCollectCooldown", "EliteHpScale", "EliteDamageScale", "EliteSpeedScale",
+        "EliteXpScale", "EliteScale", "BuildWeightWeapon", "BuildWeightCompanion",
+        "BuildWeightStat", "BuildWeightBuff", "RerollsPerLevel", "LuckRarityWeight",
+    }
+    balance = {rec.get("Id"): rec.get("Value", 0) for rec in rows("Balance")}
+    for key in sorted(required_balance - set(balance)):
+        errors.append(f"[Balance] 缺少必需项 '{key}'")
+
+    def balance_min(key, minimum):
+        if key in balance and balance[key] < minimum:
+            errors.append(f"[Balance] {key}: {balance[key]} 必须 >= {minimum}")
+
+    for key in required_balance:
+        if key in {"HeartDropChance"}:
+            if key in balance and not (0 <= balance[key] <= 1):
+                errors.append(f"[Balance] {key}: 必须在 0..1")
+        elif key in {"BuildWeightWeapon", "BuildWeightCompanion", "BuildWeightStat", "BuildWeightBuff",
+                     "RerollsPerLevel", "LuckRarityWeight", "WeaponDamagePerLevel"}:
+            balance_min(key, 0)
+        else:
+            balance_min(key, 0.01 if key not in {"WeaponSlots", "WeaponMaxLevel",
+                                                 "WeaponProjectileMilestone", "WeaponPierceMilestone"} else 1)
+
+    return errors
+
+
 def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("--xlsx", default=str(ROOT / "Config" / "GameConfig.xlsx"))
@@ -350,6 +460,7 @@ def main(argv):
         return 1
 
     errors = validate_refs(tables, types_by_table)
+    errors.extend(validate_values(tables))
     if errors:
         print("导表失败，引用校验不通过:", file=sys.stderr)
         for e in errors:
