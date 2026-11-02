@@ -3,6 +3,7 @@ using Game.Core;
 using Game.Core.Events;
 using Game.Model;
 using Game.Systems;
+using Game.Systems.Weapons;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -267,6 +268,65 @@ namespace Game.Tests
                 XpValue = 0, BodyRadius = 0.4f, Scale = 1f
             }, position);
             return enemies.Get(slot);
+        }
+
+        [Test]
+        public void LifestealStillHealsOnKillingBlowAfterCleanup()
+        {
+            // 真实顺序：伤害事件入队 -> 清理阶段移除尸体 -> 最后 Flush。
+            // 目标已经不在 EnemySystem 里，Lifesteal 不能因此被吞掉。
+            var bus = new EventBus();
+            PlayerModel player = Player();
+            player.HP = 50f;
+            var enemies = new EnemySystem(player, 67f, null, new UnitIdAllocator(2), bus);
+            var buffs = new BuffSystem(player, bus, enemies, AppRoot.PlayerUnit);
+            buffs.Acquire(new BuffDef
+            {
+                Id = "Vamp", Name = "吸血", Effect = BuffEffectType.Lifesteal, MaxStacks = 1,
+                Params = new[] { 0.2f }
+            });
+
+            EnemyModel dying = Spawn(enemies, new Vector2(1f, 0f), 100f);
+            enemies.Grid.Rebuild(Vector2.zero, enemies);
+
+            var damage = new DamageInfo(1000f, DamageType.Physical, AppRoot.PlayerUnit, Vector2.right, 0f,
+                false, DamageFlags.Dodgeable);
+            WeaponDamage.ApplyAndPublish(bus, dying, damage, 1f);
+            Assert.IsTrue(dying.IsDead, "这一下应当击杀目标");
+
+            Assert.IsTrue(enemies.TryGetSlot(dying.Id, out int slot));
+            enemies.Remove(slot);
+            bus.Flush();
+
+            Assert.AreEqual(70f, player.HP, 1e-4f, "1000 点致命伤害按 20% 吸血应回 20 血，而不是因目标已移除而跳过");
+        }
+
+        [Test]
+        public void OnHitChainUsesEventPositionOnKillingBlow()
+        {
+            // 击杀一击的 OnHit 也应该用事件里的命中位置，而不是回头查已经被清理的目标。
+            var bus = new EventBus();
+            PlayerModel player = Player();
+            var enemies = new EnemySystem(player, 67f, null, new UnitIdAllocator(2), bus);
+            var buffs = new BuffSystem(player, bus, enemies, AppRoot.PlayerUnit);
+            buffs.Acquire(new BuffDef
+            {
+                Id = "Chain", Name = "导电", Effect = BuffEffectType.OnHitChain, MaxStacks = 1,
+                Interval = 0.4f, Params = new[] { 4.5f, 10f, 3f }
+            });
+
+            EnemyModel dying = Spawn(enemies, new Vector2(1f, 0f), 100f);
+            EnemyModel nearby = Spawn(enemies, new Vector2(2f, 0f), 100f);
+            enemies.Grid.Rebuild(Vector2.zero, enemies);
+
+            var damage = new DamageInfo(1000f, DamageType.Physical, AppRoot.PlayerUnit, Vector2.right, 0f,
+                false, DamageFlags.Dodgeable);
+            WeaponDamage.ApplyAndPublish(bus, dying, damage, 1f);
+            Assert.IsTrue(enemies.TryGetSlot(dying.Id, out int slot));
+            enemies.Remove(slot);
+            bus.Flush();
+
+            Assert.Less(nearby.HP, 100f, "击杀一击的链电应该以事件位置为中心命中附近敌人");
         }
 
         [Test]

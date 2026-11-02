@@ -15,7 +15,7 @@ namespace Game.Model
     /// 生命上限与移速走 StatBlock：道具与 buff 以后只能改这里，不许直接改最终值。
     /// 冲刺相关的数字还是构造时定死的普通字段，I1-2 的冲刺机制本身不经过属性系统。
     /// </summary>
-    public sealed class PlayerModel
+    public sealed class PlayerModel : IDamageable
     {
         /// <summary>
         /// 玩家的受击体积（米）。玩家预制体是半径 0.5 的胶囊，敌人的近战判定与投射物命中都用它。
@@ -46,6 +46,9 @@ namespace Game.Model
 
         /// <summary>当前血量。掉到 0 以下只做判定，别的地方不许拿它当"还活着"的唯一依据。</summary>
         public float HP;
+
+        /// <summary>最后一次实际扣血的来源。统一伤害入口维护，死亡归属/调试使用。</summary>
+        public UnitId LastDamageSource;
 
         public readonly float DashSpeed;
         public readonly float DashDuration;
@@ -96,11 +99,30 @@ namespace Game.Model
         public Vector2 Forward => new Vector2(Mathf.Cos(Facing), Mathf.Sin(Facing));
 
         public bool IsDead => HP <= 0f;
+        public bool IsAlive => !IsDead;
         public float HpRatio => MaxHP > 0f ? Mathf.Clamp01(HP / MaxHP) : 0f;
+
+        // 显式实现避免 Position/HP 这类字段与接口属性命名冲突；DamageService 只通过接口读。
+        UnitId IDamageable.Id => UnitId.Player;
+        UnitKind IDamageable.Kind => UnitKind.Player;
+        bool IDamageable.IsAlive => IsAlive;
+        float IDamageable.Hp => HP;
+        float IDamageable.MaxHp => MaxHP;
+        Vector2 IDamageable.Position => Position;
         public bool IsDashing => DashTimer > 0f;
         public bool IsInvulnerable => DashTimer > 0f;
         public bool CanDash => DashCooldownTimer <= 0f && DashTimer <= 0f;
 
         public bool CanCollectExperience => ExperienceCollectTimer <= 0f;
+
+        /// <summary>玩家也走统一伤害入口；无敌帧和闪避仍然由 DamageResolver 判定。</summary>
+        public DamageResult ApplyDamage(in DamageInfo damage, float dodgeRoll)
+        {
+            var target = new DamageTarget(HP, Stats[StatType.Armor], Stats[StatType.Dodge], IsInvulnerable);
+            DamageResult result = DamageResolver.Resolve(damage, target, dodgeRoll);
+            HP = result.RemainingHp;
+            if (result.Applied > 0f) LastDamageSource = damage.Source;
+            return result;
+        }
     }
 }

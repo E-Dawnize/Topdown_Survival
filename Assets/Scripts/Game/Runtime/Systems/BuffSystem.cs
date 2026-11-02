@@ -232,9 +232,13 @@ namespace Game.Systems
         /// <summary>
         /// 命中触发。只处理玩家/旅伴造成的、非 buff 连锁产生的伤害：
         ///   - Lifesteal：按实际伤害回血；
-        ///   - OnHitChain：向目标附近弹射闪电，有冷却；
-        ///   - OnHitExplode：在目标位置引发小范围爆炸，有冷却。
+        ///   - OnHitChain：向命中位置附近弹射闪电，有冷却；
+        ///   - OnHitExplode：在命中位置引发小范围爆炸，有冷却。
         /// 连锁伤害写 FromEffect=true，避免自己再触发自己。
+        ///
+        /// 这里不能用 ResolveEnemy(e.Target) 作为前置条件：伤害事件先入队，清理阶段会先把尸体移除，
+        /// 最后才 Flush。致命一击的目标在事件处理时已经不在 EnemySystem 里，按目标查模型会把
+        /// 击杀时的 Lifesteal / OnHit 全部吞掉。命中位置已经由事件携带，范围效果直接用它。
         /// </summary>
         void OnUnitDamaged(UnitDamaged e)
         {
@@ -242,8 +246,7 @@ namespace Game.Systems
             if (e.Source.Kind != UnitKind.Player && e.Source.Kind != UnitKind.Companion) return;
             if (e.Target.Kind != UnitKind.Enemy) return;
 
-            EnemyModel target = ResolveEnemy(e.Target);
-            if (target == null) return;
+            Vector2 hitPosition = new Vector2(e.X, e.Z);
 
             for (int i = 0; i < _buffs.Count; i++)
             {
@@ -257,14 +260,14 @@ namespace Game.Systems
                     case BuffEffectType.OnHitChain:
                         if (buff.EffectTimer > 0f) break;
                         buff.EffectTimer = Mathf.Max(0.15f, buff.Def.Interval);
-                        ApplyAreaDamage(target.Position, buff.GetParam(0, 4.5f), buff.GetParam(1, 6f),
+                        ApplyAreaDamage(hitPosition, buff.GetParam(0, 4.5f), buff.GetParam(1, 6f),
                             e.Source, Mathf.RoundToInt(buff.GetParam(2, 3f)), CombatAreaEffectKind.Chain);
                         break;
 
                     case BuffEffectType.OnHitExplode:
                         if (buff.EffectTimer > 0f) break;
                         buff.EffectTimer = Mathf.Max(0.15f, buff.Def.Interval);
-                        ApplyAreaDamage(target.Position, buff.GetParam(0, 2.8f), buff.GetParam(1, 10f),
+                        ApplyAreaDamage(hitPosition, buff.GetParam(0, 2.8f), buff.GetParam(1, 10f),
                             e.Source, 12, CombatAreaEffectKind.Explosion);
                         break;
                 }
@@ -299,13 +302,6 @@ namespace Game.Systems
                 ApplyAreaDamage(_player.Position, buff.GetParam(0, 3f), buff.GetParam(1, 8f),
                     _playerUnit, 12, CombatAreaEffectKind.Thorns);
             }
-        }
-
-        EnemyModel ResolveEnemy(UnitId id)
-        {
-            if (_enemies == null || !_enemies.TryGetSlot(id, out int slot)) return null;
-            EnemyModel enemy = _enemies.Get(slot);
-            return enemy != null && enemy.IsAlive && !enemy.IsDead ? enemy : null;
         }
 
         /// <summary>

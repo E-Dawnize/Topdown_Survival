@@ -189,6 +189,8 @@ namespace Game.Views
 
         void OnUnitDamaged(UnitDamaged e)
         {
+            // 统一伤害入口也会为旅伴发 UnitDamaged；敌人视图池只处理敌人目标。
+            if (e.Target.Kind != UnitKind.Enemy) return;
             if (!e.Target.IsValid || e.Amount <= 0f) return;
 
             // 事件带的是稳定 UnitId；槽位只用于本池的实例索引，不能再用 id.Value - 1 反推。

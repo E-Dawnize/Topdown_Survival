@@ -93,21 +93,9 @@ namespace Game.Systems.Weapons
         /// </summary>
         public static DamageResult ApplyToEnemy(EnemyModel enemy, in DamageInfo damage, float dodgeRoll)
         {
-            var target = new DamageTarget(
-                enemy.HP,
-                enemy.Stats[StatType.Armor],
-                enemy.Stats[StatType.Dodge],
-                false);   // 敌人暂时没有无敌帧状态；玩家冲刺的 i-frame 不走这条通路
-
-            DamageResult result = DamageResolver.Resolve(damage, target, dodgeRoll);
-            enemy.HP = result.RemainingHp;
-
-            // 击杀归属在伤害结算这一刻才能确定，清理阶段拿不到，所以在这里落一笔
-            if (result.Applied > 0f)
-            {
-                enemy.LastDamageSource = damage.Source;
-                ApplyKnockback(enemy, damage);
-            }
+            // 统一入口负责 HP 写回与 LastDamageSource；这里只补武器专属的击退。
+            DamageResult result = DamageService.Apply(enemy, damage, dodgeRoll);
+            if (result.Applied > 0f) ApplyKnockback(enemy, damage);
             return result;
         }
 
@@ -124,12 +112,8 @@ namespace Game.Systems.Weapons
         public static DamageResult ApplyAndPublish(IEventBus events, EnemyModel enemy, in DamageInfo damage,
             float dodgeRoll, bool fromEffect = false)
         {
-            DamageResult result = ApplyToEnemy(enemy, damage, dodgeRoll);
-            if (result.Applied <= 0f) return result;
-
-            // 目标用模型自己的稳定 Id，不用槽位号：槽位会被复用，订阅方按 ID 对齐实体
-            events?.Publish(new UnitDamaged(enemy.Id, damage.Source, result.Applied, damage.IsCrit,
-                result.RemainingHp, fromEffect, enemy.Position.x, enemy.Position.y));
+            DamageResult result = DamageService.Apply(enemy, damage, dodgeRoll, events, fromEffect);
+            if (result.Applied > 0f) ApplyKnockback(enemy, damage);
             return result;
         }
 

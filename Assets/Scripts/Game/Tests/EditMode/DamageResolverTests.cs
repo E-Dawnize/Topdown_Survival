@@ -1,4 +1,5 @@
-﻿using Game.Config;
+﻿using System.Collections.Generic;
+using Game.Config;
 using Game.Core.Events;
 using Game.Model;
 using Game.Systems;
@@ -154,6 +155,64 @@ namespace Game.Tests
 
             Assert.IsTrue(result.Killed);
             Assert.AreEqual(0f, result.RemainingHp, 0f);
+        }
+
+        [Test]
+        public void TrueDamageBypassesArmorButStillRespectsDodge()
+        {
+            var trueHit = new DamageInfo(20f, DamageType.True, new UnitId(7), Vector2.right, 0f, false,
+                DamageFlags.None);
+            DamageResult armored = DamageResolver.Resolve(trueHit, Target(100f, armor: 50f), 0f);
+            Assert.AreEqual(20f, armored.Applied, Tolerance, "真实伤害不应被 50 护甲减半");
+
+            var dodgeableTrueHit = new DamageInfo(20f, DamageType.True, new UnitId(7), Vector2.right, 0f, false,
+                DamageFlags.Dodgeable);
+            DamageResult dodged = DamageResolver.Resolve(dodgeableTrueHit, Target(100f, dodge: 0.5f), 0.1f);
+            Assert.IsTrue(dodged.Dodged, "真实伤害绕护甲，但不应该绕闪避");
+        }
+
+        [Test]
+        public void DamageServiceRoutesPlayerThroughTheSamePipeline()
+        {
+            var bus = new EventBus();
+            var player = new PlayerModel(100f, 5f, 15f, 0.15f, 2f, 67f);
+            var events = new List<PlayerDamaged>();
+            bus.Subscribe<PlayerDamaged>(events.Add);
+
+            DamageResult result = DamageService.Apply(player,
+                new DamageInfo(20f, DamageType.Physical, new UnitId(7, UnitKind.Enemy), Vector2.right, 0f,
+                    false, DamageFlags.Dodgeable), 1f, bus);
+            bus.Flush();
+
+            Assert.AreEqual(80f, result.RemainingHp, Tolerance);
+            Assert.AreEqual(80f, player.HP, Tolerance);
+            Assert.AreEqual(1, events.Count, "玩家受伤仍然要发 PlayerDamaged，HUD/Buff 不需要改订阅");
+            Assert.AreEqual(20f, events[0].Amount, Tolerance);
+            Assert.AreEqual(new UnitId(7, UnitKind.Enemy), player.LastDamageSource);
+        }
+
+        [Test]
+        public void DamageServiceRoutesCompanionAndPublishesUnitDamaged()
+        {
+            var bus = new EventBus();
+            var events = new List<UnitDamaged>();
+            bus.Subscribe<UnitDamaged>(events.Add);
+            var companion = new CompanionModel(new CompanionDef
+            {
+                Id = "test_companion", Name = "测试旅伴", MaxHP = 40f, WeaponId = "Bow"
+            }, new WeaponDef { Id = "Bow", Name = "弓", Kind = WeaponKind.Ranged }, 0,
+                new UnitId(9, UnitKind.Companion), 6f);
+
+            DamageResult result = DamageService.Apply(companion,
+                new DamageInfo(15f, DamageType.Physical, UnitId.Player, Vector2.right, 0f, false,
+                    DamageFlags.Dodgeable), 1f, bus);
+            bus.Flush();
+
+            Assert.AreEqual(25f, companion.HP, Tolerance);
+            Assert.AreEqual(1, events.Count);
+            Assert.AreEqual(UnitKind.Companion, events[0].Target.Kind);
+            Assert.AreEqual(companion.UnitId, events[0].Target);
+            Assert.AreEqual(UnitId.Player, companion.LastDamageSource);
         }
 
         [Test]

@@ -50,7 +50,7 @@ namespace Game.Model
     /// 敌人的纯数据。位置用 Vector2 的 (x, z)，不碰 Transform，也不认识网格与视图。
     /// 属性走 StatBlock：EnemyDef 的数字乘上本段导演的倍率后只作为基线写进去。
     /// </summary>
-    public sealed class EnemyModel
+    public sealed class EnemyModel : IDamageable
     {
         public readonly EnemyDef Def;
         public readonly StatBlock Stats;
@@ -141,6 +141,17 @@ namespace Game.Model
 
         public float MaxHP => Stats[StatType.MaxHP];
 
+        public UnitKind Kind => UnitKind.Enemy;
+
+        // Id 是字段，不能直接实现接口属性；显式转发保持不变。
+        UnitId IDamageable.Id => Id;
+
+        // 字段名与接口属性冲突时显式实现；DamageService 只通过接口读。
+        bool IDamageable.IsAlive => IsAlive;
+        float IDamageable.Hp => HP;
+        float IDamageable.MaxHp => MaxHP;
+        Vector2 IDamageable.Position => Position;
+
         /// <summary>身体半径，分离力与命中判定用它算两个敌人该保持多远。</summary>
         public float Radius => Def.BodyRadius * VisualScale;
 
@@ -149,6 +160,16 @@ namespace Game.Model
         public float ContactDamage => Stats[StatType.ContactDamage];
 
         /// <summary>按行为表推导的出手方式。表现层与 EnemySystem 共用，不各自 switch 一遍。</summary>
+        /// <summary>统一伤害入口的写回：护甲/闪避来自 StatBlock，死亡由清理阶段收走。</summary>
+        public DamageResult ApplyDamage(in DamageInfo damage, float dodgeRoll)
+        {
+            var target = new DamageTarget(HP, Stats[StatType.Armor], Stats[StatType.Dodge], false);
+            DamageResult result = DamageResolver.Resolve(damage, target, dodgeRoll);
+            HP = result.RemainingHp;
+            if (result.Applied > 0f) LastDamageSource = damage.Source;
+            return result;
+        }
+
         public EnemyAttackKind AttackKind
         {
             get

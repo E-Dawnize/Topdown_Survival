@@ -15,7 +15,7 @@ namespace Game.Model
     /// 所以这里不存 HP / IsAlive：没人读的状态不为未来预留，等真的要接敌人对旅伴的伤害时再加字段，
     /// 同时把 CompanionDef.MaxHP 作为基线写进 StatBlock（玩偶羁绊按百分比改它）。
     /// </summary>
-    public sealed class CompanionModel
+    public sealed class CompanionModel : IDamageable
     {
         /// <summary>GDD 7.3：重复购买升 1 级，上限 3 级。</summary>
         public const int MaxLevel = 3;
@@ -46,6 +46,17 @@ namespace Game.Model
         public Vector2 Position;
         public Vector2 PrevPosition;
 
+        /// <summary>当前生命。旅伴是否会被敌人攻击由上层 AI/系统决定；模型先提供统一伤害契约。</summary>
+        public float HP;
+
+        /// <summary>最后一次实际扣血的来源，供后续击杀归属/调试使用。</summary>
+        public UnitId LastDamageSource;
+
+        /// <summary>死亡后不再参与后续伤害；当前没有移除/复活流程，由上层决定如何处理。</summary>
+        public bool IsAlive { get; private set; } = true;
+
+        public bool IsDead => !IsAlive || HP <= 0f;
+
         /// <summary>
         /// 阻尼跟随的内部速度。只给 CompanionSystem 的 SmoothDamp 用，渲染层不读；
         /// 瞬移回位时必须清掉，否则下一帧会带着旧速度冲出去。
@@ -74,6 +85,8 @@ namespace Game.Model
             Stats.SetBase(StatType.CritDamage, DefaultCritDamage);
 
             SetLevel(1);
+            HP = MaxHP;
+            IsAlive = true;
         }
 
         /// <summary>阵营。羁绊只按 CompanionDef 的这一列统计，代码里不认具体是哪个旅伴。</summary>
@@ -82,6 +95,26 @@ namespace Game.Model
         public float MaxHP => Stats[StatType.MaxHP];
 
         public float MoveSpeed => Stats[StatType.MoveSpeed];
+
+        UnitId IDamageable.Id => UnitId;
+        UnitKind IDamageable.Kind => UnitKind.Companion;
+        bool IDamageable.IsAlive => IsAlive;
+        float IDamageable.Hp => HP;
+        float IDamageable.MaxHp => MaxHP;
+        Vector2 IDamageable.Position => Position;
+
+        /// <summary>统一伤害入口的写回。当前没有敌人攻击旅伴，但接口与测试先就位。</summary>
+        public DamageResult ApplyDamage(in DamageInfo damage, float dodgeRoll)
+        {
+            if (!IsAlive) return new DamageResult(0f, false, false, false, HP);
+
+            var target = new DamageTarget(HP, Stats[StatType.Armor], Stats[StatType.Dodge], false);
+            DamageResult result = DamageResolver.Resolve(damage, target, dodgeRoll);
+            HP = result.RemainingHp;
+            if (result.Applied > 0f) LastDamageSource = damage.Source;
+            if (result.Killed) IsAlive = false;
+            return result;
+        }
 
         /// <summary>能否再买一次。满级后构筑卡池里的这张卡就不能再拿了。</summary>
         public bool CanLevelUp => Level < MaxLevel;

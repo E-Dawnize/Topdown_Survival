@@ -1,4 +1,5 @@
 using Game.Core.Events;
+using Game.Model;
 using UnityEngine;
 
 namespace Game.Core
@@ -53,6 +54,8 @@ namespace Game.Core
         /// </summary>
         void OnUnitDamaged(UnitDamaged e)
         {
+            // 只有敌人受击触发定格/震屏；玩家/旅伴未来的受击表现由自己的视图决定。
+            if (e.Target.Kind != UnitKind.Enemy) return;
             if (!HitFeedback.IsEmphasized(e.Amount, e.IsCrit)) return;
 
             _clock.RequestHitStop(HitFeedback.HitStopSeconds);

@@ -1,10 +1,8 @@
 using System;
 using Game.Config;
-using Game.Core.Events;
-using Game.Model;
 using UnityEngine;
 
-namespace Game.Systems
+namespace Game.Model
 {
     /// <summary>命中附带的行为开关。只列当前管线真的会用到的，不加"以后可能用"的位。</summary>
     [Flags]
@@ -14,7 +12,6 @@ namespace Game.Systems
 
         /// <summary>可以被闪避。环境伤害、DoT 一般不带这一位。</summary>
         Dodgeable = 1 << 0,
-
     }
 
     /// <summary>
@@ -86,11 +83,28 @@ namespace Game.Systems
     }
 
     /// <summary>
+    /// 可受伤单位的只读契约。玩家、敌人、旅伴都实现这一份，伤害写回和存活判断不再各写一套。
+    /// 这里只暴露伤害结算需要的最小信息，不把事件总线、视图或系统引用带进 Model。
+    /// </summary>
+    public interface IDamageable
+    {
+        UnitId Id { get; }
+        UnitKind Kind { get; }
+        bool IsAlive { get; }
+        float Hp { get; }
+        float MaxHp { get; }
+        Vector2 Position { get; }
+
+        /// <summary>只负责算伤害、写回生命和记录最后来源；事件由 DamageService 统一发布。</summary>
+        DamageResult ApplyDamage(in DamageInfo damage, float dodgeRoll);
+    }
+
+    /// <summary>
     /// 伤害结算。纯静态、不读时间、不掷随机，所以同样的输入永远同样的输出，单测能直接钉死数值。
     /// 闪避的骰子由调用方用 runRng 掷好再传进来：随机流归 RunLoop 一条线管，这里不许自己开流，
     /// 否则"固定种子 + 固定输入 = 相同结果"就不成立了。
     /// 结算顺序：闪避 → 无敌帧 → 护甲减伤 → 扣血 → 死亡判定。
-    /// 提前守一条：血量已经不是正数时直接返回全零结果，不重复判死。
+    /// 真实伤害只绕过护甲，不绕过闪避/无敌帧。
     /// </summary>
     public static class DamageResolver
     {
@@ -100,7 +114,10 @@ namespace Game.Systems
         public static DamageResult Resolve(in DamageInfo damage, in DamageTarget target, float dodgeRoll)
         {
             // 已经 0 血还挨打时不再判死，否则死亡事件会被重复入队、掉落会翻倍
-            if (target.Hp <= 0f) return new DamageResult(0f, false, false, false, 0f);
+            if (target.Hp <= 0f || damage.Amount <= 0f)
+            {
+                return new DamageResult(0f, false, false, false, Mathf.Max(0f, target.Hp));
+            }
 
             // roll 由调用方用 runRng 掷好传进来，∈ [0,1)；恰好相等算命中，边界不留给浮点巧合
             if ((damage.Flags & DamageFlags.Dodgeable) != 0 && dodgeRoll < target.Dodge)
@@ -108,7 +125,10 @@ namespace Game.Systems
 
             if (target.Invulnerable) return new DamageResult(0f, false, true, false, target.Hp);
 
-            float afterArmor = damage.Amount * (1f - ArmorReduction(target.Armor));
+            float afterArmor = damage.Type == DamageType.True
+                ? damage.Amount
+                : damage.Amount * (1f - ArmorReduction(target.Armor));
+
             float remaining = target.Hp - afterArmor;
             bool killed = remaining <= 0f;
             if (remaining < 0f) remaining = 0f;   // 血不能为负，HUD 与 HpRatio 都按这个前提写

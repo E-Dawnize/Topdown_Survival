@@ -194,13 +194,8 @@ namespace Game.Core
                 var damage = new DamageInfo(contact, DamageType.Physical, UnitId.Player, direction,
                     WeaponDamage.KnockbackSpeed(contact), false,
                     DamageFlags.Dodgeable);
-                DamageResult result = WeaponDamage.ApplyToEnemy(enemy, damage, 1f);
-                if (result.Applied > 0f)
-                {
-                    hitAny = true;
-                    _events?.Publish(new UnitDamaged(enemy.Id, UnitId.Player, result.Applied, false,
-                        result.RemainingHp, false, enemy.Position.x, enemy.Position.y));
-                }
+                DamageResult result = WeaponDamage.ApplyAndPublish(_events, enemy, damage, 1f);
+                if (result.Applied > 0f) hitAny = true;
             }
 
             // 碰撞伤害是“贴身自动掉血”，没表现时会被当成刀在隔空砍人；给一个短暂的黄色环。
