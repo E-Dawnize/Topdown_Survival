@@ -124,6 +124,26 @@ namespace Game.Systems.Weapons
         /// </summary>
         public Vector2 AimDirection { get; set; }
 
+        /// <summary>当前锁定的目标位置（世界 x,z），没有目标时 HasTarget 为 false。表现层的瞄准圈读它。</summary>
+        public Vector2 TargetPosition { get; private set; }
+
+        /// <summary>目标身体半径。瞄准圈的内圈按它收拢，对大体型怪不会缩进身体里。</summary>
+        public float TargetRadius { get; private set; } = 0.4f;
+
+        public bool HasTarget { get; private set; }
+
+        public void SetTarget(Vector2 position, float radius)
+        {
+            TargetPosition = position;
+            TargetRadius = radius > 0.05f ? radius : 0.4f;
+            HasTarget = true;
+        }
+
+        public void ClearTarget()
+        {
+            HasTarget = false;
+        }
+
         public void Tick(float dt)
         {
             if (_shotAge < NeverFiredAge)

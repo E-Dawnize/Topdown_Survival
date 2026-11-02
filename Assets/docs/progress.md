@@ -10,7 +10,7 @@
 | 任务 | 状态 | 证据 |
 |---|---|---|
 | 回血掉落率 | 完成 | Balance `HeartDropChance` 12%→9%；xlsx 与导出 JSON 同步；掉落概率测试按 9% 重跑 |
-| 武器攻击范围 | 完成 | `WeaponRangeIndicator` 基类 + 扇形/圆形子类；装备即创建、攻击窗口才显示；`WeaponModel.ShotAge` 补播晚挂视觉的第一次出手 |
+| 武器攻击范围 | 完成 | `WeaponRangeIndicator` 基类 + 扇形/目标锁定圈子类；装备即创建、攻击窗口才显示；远程锁定圈跟着目标从外圈收拢；`WeaponModel.ShotAge` 补播晚挂视觉的第一次出手 |
 | 经验球品阶 | 完成 | `PickupTier` 由敌人 Tier/精英/BOSS 推导；`PickupViewPool` 五种颜色/大小；经验值仍取 Enemy.XpValue（精英 ×4） |
 | 全屏吸取 | 完成 | E/RB 输入、12 秒冷却（Balance `ExperienceCollectCooldown`）、`PickupSystem.CollectAllExperience` 只吸经验；右下 HUD 冷却条 + 扩散环 + 提示 |
 | 怪物血条 | 完成 | `EnemyHealthBar` 两条世界空间 LineRenderer；掉血后显示，精英/BOSS/Tier 4+ 常显 |
@@ -25,7 +25,7 @@
 
 | 任务 | 状态 | 证据 |
 |---|---|---|
-| 武器攻击范围显示 | 完成 | `WeaponRangeIndicator` 抽象基类 + `FanRangeIndicator`/`CircleRangeIndicator` 子类；装备即创建、攻击窗口才显示；Melee/RangedBehaviour 每步刷新 `LastRange/AimDirection`；`WeaponModel.ShotAge` 补播晚挂视觉的第一次出手 |
+| 武器攻击范围显示 | 完成 | `WeaponRangeIndicator` 抽象基类 + `FanRangeIndicator`/`TargetReticleIndicator` 子类；装备即创建、攻击窗口才显示；远程锁定圈跟着目标怪从外圈收拢；Melee/RangedBehaviour 每步刷新 `LastRange/AimDirection`；`WeaponModel.ShotAge` 补播晚挂视觉的第一次出手 |
 | 敌人攻击可见 | 完成 | 近战/冲锋起手红环 + 出手红扇；投手蓄力后发射可见弹丸（`EnemyProjectileSystem` + 暗红箭头视图）；伤害只在起手结束/弹丸命中时结算 |
 | 范围伤害可见 | 完成 | 碰撞、爆炸、链电、环绕刀、反伤结算后发 `CombatAreaEffect`，`CombatEffectView` 画不同颜色范围环 |
 | HUD 装备栏 | 完成 | `BuildController.LoadoutRevision` 驱动左上装备栏重拼：武器/旅伴及等级、组合、数值卡数、指定 buff/道具名字；受击弹出伤害数字 |

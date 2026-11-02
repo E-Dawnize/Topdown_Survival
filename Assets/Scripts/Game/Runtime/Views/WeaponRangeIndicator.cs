@@ -7,7 +7,7 @@ namespace Game.Views
     /// <summary>
     /// 武器攻击范围效果的抽象基类。每种形状只实现自己的 <see cref="Draw"/>：
     ///   - 近战：扇形（FanRangeIndicator）
-    ///   - 远程：圆形（CircleRangeIndicator）
+    ///   - 远程：目标锁定圈（TargetReticleIndicator）
     /// 以后要加锥形、直线、锁定框，只需要新增子类并在工厂里登记，不用改 WeaponVisual 里的逻辑。
     ///
     /// 显示规则：对象在武器装上的第一帧就创建好（所以随时可以显示），
@@ -60,10 +60,10 @@ namespace Game.Views
         {
             if (Line == null) return;
 
-            bool show = visible && intensity > 0.01f;
-            if (Line.enabled != show) Line.enabled = show;
-            if (!show) return;
+            if (Line.enabled != visible) Line.enabled = visible;
+            if (!visible) return;
 
+            // intensity=0 是拉弓窗口的第一帧；形状子类仍要画外圈，不能因为进度为 0 就消失。
             Draw(Mathf.Clamp01(intensity));
         }
 
@@ -149,14 +149,14 @@ namespace Game.Views
             Transform anchor = weaponTransform.parent != null ? weaponTransform.parent : weaponTransform;
             Transform owner = WeaponRangeGeometry.OwnerOf(weaponTransform);
             bool melee = model.Def.Kind == WeaponKind.Melee;
-            string shape = melee ? "Fan" : "Circle";
+            string shape = melee ? "Fan" : "Reticle";
 
             var go = new GameObject("Range_" + shape + "_" + model.Id);
             go.transform.SetParent(anchor, false);
 
             WeaponRangeIndicator indicator = melee
                 ? go.AddComponent<FanRangeIndicator>()
-                : (WeaponRangeIndicator)go.AddComponent<CircleRangeIndicator>();
+                : (WeaponRangeIndicator)go.AddComponent<TargetReticleIndicator>();
             indicator.Initialize(model, owner, ownerKey);
             return indicator;
         }

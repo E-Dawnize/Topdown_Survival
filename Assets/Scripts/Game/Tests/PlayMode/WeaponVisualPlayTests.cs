@@ -274,7 +274,7 @@ namespace Game.Tests
         }
 
         [UnityTest]
-        public IEnumerator RangedRangeCircleShowsOnlyWhileFiring()
+        public IEnumerator RangedWeaponShowsTargetReticleDuringDraw()
         {
             WeaponVisualCatalog catalog = WeaponVisualCatalog.LoadDefault();
             Assert.IsNotNull(catalog, "缺少 WeaponVisualCatalog.asset");
@@ -289,28 +289,32 @@ namespace Game.Tests
                 Params = new[] { 0f }
             };
             var model = new WeaponModel(def, new NoopBehaviour());
+            model.SetTarget(new Vector2(5f, 0f), 0.35f);
+            model.Fire(default);
+            model.Tick(0.60f);   // 冷却剩 0.25 秒，进入 0.28 秒拉弓窗口
 
             var root = new GameObject("RangedRangePlayTest");
             WeaponVisual visual = WeaponVisual.Attach(root.transform, model, entry, Vector3.zero, 1f, 0);
             Assert.IsNotNull(visual);
             Assert.IsNotNull(visual.RangeIndicator, "远程武器装上的第一帧就应该有范围显示对象");
-            Assert.IsTrue(visual.RangeIndicator is CircleRangeIndicator, "远程应该使用圆形范围子类");
-            Assert.IsFalse(visual.RangeIndicator.IsVisible, "待机时射程圆应隐藏");
-            Assert.AreEqual(0, model.ShotsFired, "测试前提：还没有开过火");
+            Assert.IsTrue(visual.RangeIndicator is TargetReticleIndicator, "远程应该使用目标锁定圈子类");
 
-            Transform range = root.transform.Find("Range_Circle_Bow");
-            Assert.IsNotNull(range, "范围圆形应作为武器架的兄弟节点存在");
-
-            model.Fire(default);
-            yield return null;
-
+            Transform range = root.transform.Find("Range_Reticle_Bow");
+            Assert.IsNotNull(range, "目标锁定圈应作为武器架的兄弟节点存在");
             LineRenderer line = range.GetComponent<LineRenderer>();
             Assert.IsNotNull(line);
-            Assert.IsTrue(visual.RangeIndicator.IsVisible, "开火后射程圆应短暂可见");
-            Assert.Greater(line.positionCount, 8, "圆形范围要有足够的弧段");
+            Assert.IsTrue(line.enabled, "冷却末尾拉弓时目标锁定圈应可见");
 
-            yield return new WaitForSeconds(entry.AttackDuration + 0.15f);
-            Assert.IsFalse(visual.RangeIndicator.IsVisible, "后坐动作结束后射程圆应隐藏");
+            // 圈心应该在目标 (5,0) 附近，而不是射手 (0,0)。
+            Vector3 sum = Vector3.zero;
+            for (int i = 0; i < line.positionCount; i++) sum += line.GetPosition(i);
+            Vector3 center = sum / line.positionCount;
+            Assert.AreEqual(5f, center.x, 0.05f, "锁定圈应画在目标怪身上");
+            Assert.AreEqual(0f, center.z, 0.05f);
+
+            model.ClearTarget();
+            yield return null;
+            Assert.IsFalse(visual.RangeIndicator.IsVisible, "没有目标后锁定圈应隐藏");
 
             Object.Destroy(root);
         }

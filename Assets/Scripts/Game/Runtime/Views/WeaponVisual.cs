@@ -52,7 +52,7 @@ namespace Game.Views
         Quaternion _nockedBaseRotation = Quaternion.identity;
         Vector3 _nockedBaseScale = Vector3.one;
 
-        // 常驻范围显示由独立的 WeaponRangeIndicator 子类负责：近战扇形、远程圆形。
+        // 攻击范围显示由独立的 WeaponRangeIndicator 子类负责：近战扇形、远程目标锁定圈。
         // WeaponVisual 只创建它并在每帧把 attacking 状态转给它，不在这里写扇形的 if。
         WeaponRangeIndicator _rangeIndicator;
 
@@ -130,7 +130,7 @@ namespace Game.Views
 
             // 升级期间刚拿到的武器可能在视觉壳挂上之前就出手了：只比较 ShotsFired 会吞掉第一刀。
             // 用模型里的 ShotAge 补播这一击；只在刚刚开火时补，不会让久未开火的武器凭空挥一下。
-            if (model.ShotsFired > 0 && model.ShotAge <= 0.05f)
+            if (model.ShotsFired > 0 && model.ShotAge <= 0.08f)
             {
                 _attacking = true;
                 _attackTime = Mathf.Min(model.ShotAge, _duration);
@@ -192,32 +192,37 @@ namespace Game.Views
 
         /// <summary>
         /// 攻击窗口里的范围效果。近战只在伤害窗口 [MeleeWindowStart, MeleeWindowEnd + 0.06] 内显示，
-        /// 与原来的亮弧同步；远程在开火后的后坐动作期间显示射程圆。待机时线是关掉的。
+        /// 与原来的亮弧同步；远程在冷却末尾拉弓窗口里显示目标身上的收拢圈。待机时线是关掉的。
         /// </summary>
         void UpdateRangeIndicator()
         {
             if (_rangeIndicator == null || _model == null) return;
 
-            if (!_attacking)
-            {
-                _rangeIndicator.Refresh(false, 0f);
-                return;
-            }
-
             if (_model.Def.Kind == WeaponKind.Melee)
             {
+                if (!_attacking)
+                {
+                    _rangeIndicator.Refresh(false, 0f);
+                    return;
+                }
+
                 float start = _model.MeleeWindowStart;
                 float end = _model.MeleeWindowEnd + 0.06f;
                 bool visible = _attackTime >= start && _attackTime <= end;
                 float t = Mathf.InverseLerp(start, end, _attackTime);
                 float intensity = visible ? Mathf.Lerp(1f, 0.35f, t) : 0f;
                 _rangeIndicator.Refresh(visible, intensity);
+                return;
             }
-            else
-            {
-                float t = _duration > 0f ? Mathf.Clamp01(_attackTime / _duration) : 1f;
-                _rangeIndicator.Refresh(true, 1f - t * 0.55f);
-            }
+
+            // 远程不是画射手周围的圆，而是画在锁定怪身上的收拢圈：
+            // 冷却最后 _bowDrawLeadSeconds 秒从外圈收到目标身体边缘，开火那一帧消失。
+            // 注意它由冷却驱动，不要求 _attacking：拉弓窗口本来就发生在出手之前。
+            float lead = Mathf.Max(0.05f, _bowDrawLeadSeconds);
+            float remaining = _model.CooldownRemaining;
+            bool drawing = _model.HasTarget && remaining > 0f && remaining <= lead;
+            float progress = drawing ? 1f - remaining / lead : 0f;
+            _rangeIndicator.Refresh(drawing, progress);
         }
 
         void OnDestroy()

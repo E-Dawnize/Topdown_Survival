@@ -639,7 +639,7 @@ Assets/
                     CompanionView, PickupView, ProjectileView, WeaponVisual,
                     WeaponVisualStyle, WeaponVisualCatalog, CombatEffects, CombatEffectView,
                     EnemyProjectileViewPool, EnemyHealthBar, DamageNumbers, WeaponRangeIndicator,
-                    FanRangeIndicator, CircleRangeIndicator, CameraRig, CameraFocus, CameraPreset,
+                    FanRangeIndicator, TargetReticleIndicator, CameraRig, CameraFocus, CameraPreset,
                     PrimitiveViewFactory, SharedViewMaterial, UiFont, TimeFormat
     Services/       InputService
     Editor/         导表调用

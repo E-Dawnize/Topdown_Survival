@@ -37,31 +37,51 @@ namespace Game.Systems.Weapons
 
         public void Tick(WeaponModel weapon, Vector2 shooterPosition, Vector2 facing, in ShooterStats stats, float dt)
         {
-            // 有效射程每步都写：远程的常驻圆形范围在第一次开火前也要反映射程加成。
+            // 有效射程每步都写：瞄准圈的半径/收拢进度在第一次开火前也要反映射程加成。
             weapon.LastRange = stats.EffectiveRange(weapon.Range);
-
-            if (!weapon.IsReady) return;
 
             // 表里速度填 0 的远程武器永远打不中，是导表该拦的数据错误；
             // 这里不开火也不吃冷却，至少不会把一件坏数据变成"这把武器哑了 0.85 秒"
-            if (weapon.ProjectileSpeed <= 0f) return;
+            if (weapon.ProjectileSpeed <= 0f)
+            {
+                weapon.ClearTarget();
+                return;
+            }
 
             float range = weapon.LastRange;
 
-            // 索敌走 EnemySystem 的共享 API：射手只提供自己的结果容器，不在武器里再实现一份“射程内最近活目标”
+            // 索敌走 EnemySystem 的共享 API：射手只提供自己的结果容器，不在武器里再实现一份“射程内最近活目标”。
+            // 这里每步都查（不再只在冷却好了才查）：弓上的瞄准圈需要在冷却末尾跟着目标收拢。
             int slot = _enemies.FindNearestAliveSlot(shooterPosition, range, _candidates);
-            if (slot < 0) return;
+            if (slot < 0)
+            {
+                weapon.ClearTarget();
+                return;
+            }
 
             EnemyModel target = _enemies.Get(slot);
+            if (target == null || !target.IsAlive || target.IsDead)
+            {
+                weapon.ClearTarget();
+                return;
+            }
+
             Vector2 toTarget = target.Position - shooterPosition;
             float distance = toTarget.magnitude;
 
             // 网格里存的是上一次 Rebuild 的位置，目标可能这一 tick 已经跑出射程，用当前位置复核一遍
-            if (distance > range) return;
+            if (distance > range)
+            {
+                weapon.ClearTarget();
+                return;
+            }
 
             // 贴身重合时方向没有意义，退回射手朝向：距离为 0，取哪个方向都不影响命中判定
             Vector2 aim = distance > MinAimDistance ? toTarget / distance : facing;
             weapon.AimDirection = aim;
+            weapon.SetTarget(target.Position, target.Radius);
+
+            if (!weapon.IsReady) return;
 
             bool isCrit = WeaponDamage.RollCrit(_rng.Next01(), stats);
             float falloff = WeaponDamage.DistanceFalloff(distance, range);
