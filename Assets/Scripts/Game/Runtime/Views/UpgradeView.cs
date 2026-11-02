@@ -58,6 +58,7 @@ namespace Game.Views
         bool _visible;
         bool _navLatched;
         int _selected;
+        int _openFrame = -1;
 
         /// <summary>场景流程测试用：升级面板是否已显示。</summary>
         public bool IsVisible => _visible;
@@ -83,6 +84,7 @@ namespace Game.Views
             _selected = 0;
             _navLatched = false;
             _visible = true;
+            _openFrame = Time.frameCount;
             if (_root != null) _root.SetActive(true);
             _input?.SetUiMode(true);
             Refresh();
@@ -104,6 +106,10 @@ namespace Game.Views
         void Update()
         {
             if (!_visible || _build == null) return;
+
+            // 升级可能是在玩家按 Space/Enter 的同一帧由 Flush 打开的。
+            // 这一帧不要把同一个按键当成“确认卡牌”，否则面板会一闪而过并自动选第一张。
+            if (Time.frameCount == _openFrame) return;
 
             HandleNavigate();
 

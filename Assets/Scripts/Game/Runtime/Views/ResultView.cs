@@ -42,6 +42,7 @@ namespace Game.Views
         Text _buildText;
 
         bool _visible;
+        int _openFrame = -1;
 
         /// <summary>场景流程测试用：结算面板是否已显示。</summary>
         public bool IsVisible => _visible;
@@ -81,6 +82,7 @@ namespace Game.Views
 
             _visible = true;
             _leaving = false;
+            _openFrame = Time.frameCount;
             _root.SetActive(true);
             _input?.SetUiMode(true);
         }
@@ -88,6 +90,9 @@ namespace Game.Views
         void Update()
         {
             if (!_visible || _leaving) return;
+
+            // 死亡/通关可能和最后一次按键在同一帧发生；这一帧不要把同一个按键当成重开/回菜单。
+            if (Time.frameCount == _openFrame) return;
 
             // 两键同帧按下时只认第一个：Enter 已经要重开这一局了，不该再顺带回一趟主菜单。
             // MenuInput 同时覆盖 InputService 的 UI Map 与设备直读，测试/热重载下不会失灵。

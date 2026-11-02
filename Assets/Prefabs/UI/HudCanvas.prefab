@@ -464,8 +464,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 1
     m_VerticalOverflow: 1
     m_LineSpacing: 1
-  m_Text: "WASD \u79FB\u52A8    \u7A7A\u683C \u51B2\u523A    F1 \u8C03\u8BD5\u4FE1\u606F    F2
-    \u6263\u8840    F3 \u52A0\u7ECF\u9A8C"
+  m_Text: "WASD \u79FB\u52A8    \u7A7A\u683C \u51B2\u523A    E \u5168\u5C4F\u5438\u53D6"
 --- !u!1 &6086116488279682395
 GameObject:
   m_ObjectHideFlags: 0

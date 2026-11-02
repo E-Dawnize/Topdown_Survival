@@ -56,6 +56,18 @@ namespace Game.Views
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvas.sortingOrder = sortingOrder;
 
+            // 运行时新建的 Canvas 根 RectTransform 默认可能是 0 尺寸，
+            // 子节点用 anchor=0.5 时会以这个 0 尺寸矩形为基准，出现整块菜单偏到一侧。
+            // 把根节点显式铺满屏幕，布局才与预制体/编辑器里的 Canvas 一致。
+            RectTransform root = host.GetComponent<RectTransform>();
+            if (root != null)
+            {
+                root.anchorMin = Vector2.zero;
+                root.anchorMax = Vector2.one;
+                root.offsetMin = Vector2.zero;
+                root.offsetMax = Vector2.zero;
+            }
+
             CanvasScaler scaler = host.GetComponent<CanvasScaler>();
             if (scaler == null) scaler = host.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;

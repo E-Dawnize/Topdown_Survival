@@ -28,6 +28,14 @@ namespace Game.Core
             set => _visible = value;
         }
 
+        void Awake()
+        {
+#if !UNITY_EDITOR && !DEVELOPMENT_BUILD
+            // 发布包不保留调试覆盖层：它默认可见，会盖住 HUD，也会暴露配置/输入信息。
+            enabled = false;
+#endif
+        }
+
         void Update()
         {
             if (Keyboard.current != null && Keyboard.current.f1Key.wasPressedThisFrame)

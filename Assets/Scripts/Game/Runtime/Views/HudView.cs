@@ -61,6 +61,7 @@ namespace Game.Views
 
         void Awake()
         {
+            StretchCanvasRoot();
             // 预制体若是激活的，Awake 会先于 Bind 跑；先建控件，Bind 时就不会对着空引用刷新。
             EnsureWidgets();
         }
@@ -75,6 +76,7 @@ namespace Game.Views
             _director = director;
             _build = build;
 
+            StretchCanvasRoot();
             EnsureWidgets();
 
             // 绑定即刷新一次整屏：先建控件再写值，顺序与 UpgradeView / ResultView 一致。
@@ -107,6 +109,11 @@ namespace Game.Views
             FadeDamageFlash();
             FadeDamageText();
             Refresh(next, force: false);
+        }
+
+        void StretchCanvasRoot()
+        {
+            if (transform is RectTransform root) UiFactory.Stretch(root);
         }
 
         void EnsureWidgets()
