@@ -75,9 +75,9 @@
 
 | 项 | 值 | 位置 |
 |---|---|---|
-| 同屏敌人数 | 200 | `AppRoot.TestArenaEnemyCount` |
+| 同屏敌人数 | 200 | `Test_Arena` 的 AppRoot `_testEnemyCount`（启动时由 `SpawnTestEnemies` 铺设） |
 | 投射物池容量 | 512（验收要求 400+，留一倍余量） | `AppRoot.ProjectilePoolCapacity` |
-| 刷怪环 | 玩家周围 8~15 米，黄金角 + 面积均匀半径铺开 | `AppRoot.TestSpawnRingOffset` |
+| 刷怪环 | 玩家周围 9~16 米，黄金角 + 面积均匀半径铺开 | `SpawnRing.Offset` |
 | 刷怪环最小间距（200 个点） | 1.50 米 | `SpawnRingTests` 实测；最大的敌人身体直径 0.8 米 |
 
 刷怪分布为什么改了：原先「每个敌人各随机一个角度与半径」撒 200 个点时，中位数有 12 对出生点相距 0.3 米以内（最近一对 0.01 米），

@@ -158,6 +158,9 @@ MonoBehaviour:
   _loadConfigOnAwake: 1
   _characterId: Scavenger
   _prefabMap: {fileID: 11400000, guid: 830609b2751b0e74ebe4b0ae3dd66450, type: 2}
+  _arenaHalfExtentOverride: 20
+  _spawnTestEnemiesOnStart: 1
+  _testEnemyCount: 200
 --- !u!114 &330126993
 MonoBehaviour:
   m_ObjectHideFlags: 0

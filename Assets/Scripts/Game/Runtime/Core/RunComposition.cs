@@ -37,7 +37,7 @@ namespace Game.Core
         public RunSimulation Simulation { get; }
 
         RunComposition(ConfigDatabase config, string characterId, ulong seed,
-            int projectilePoolCapacity, float? playerMaxHp)
+            int projectilePoolCapacity, float? playerMaxHp, float? arenaHalfExtent)
         {
             Config = config ?? throw new ArgumentNullException(nameof(config));
             CharacterId = characterId ?? throw new ArgumentNullException(nameof(characterId));
@@ -54,7 +54,7 @@ namespace Game.Core
 
             Events = new EventBus();
 
-            float arenaHalf = config.GetBalance("ArenaHalfExtent", 67f);
+            float arenaHalf = arenaHalfExtent ?? config.GetBalance("ArenaHalfExtent", 67f);
             float dashMultiplier = config.GetBalance("DashSpeedMultiplier", 3f);
             float dashDuration = config.GetBalance("DashDuration", 0.15f);
             float dashCooldown = config.GetBalance("DashCooldown", 2f);
@@ -93,14 +93,21 @@ namespace Game.Core
         /// playerMaxHp 只给流程测试提高生存上限；正式装配传 null，完全使用角色表。
         /// </summary>
         public static RunComposition Create(ConfigDatabase config, string characterId, ulong seed,
-            int projectilePoolCapacity = DefaultProjectilePoolCapacity, float? playerMaxHp = null)
+            int projectilePoolCapacity = DefaultProjectilePoolCapacity, float? playerMaxHp = null,
+            float? arenaHalfExtent = null)
         {
             if (projectilePoolCapacity <= 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(projectilePoolCapacity));
             }
 
-            return new RunComposition(config, characterId, seed, projectilePoolCapacity, playerMaxHp);
+            if (arenaHalfExtent.HasValue && arenaHalfExtent.Value <= 0f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(arenaHalfExtent));
+            }
+
+            return new RunComposition(config, characterId, seed, projectilePoolCapacity, playerMaxHp,
+                arenaHalfExtent);
         }
     }
 }

@@ -42,6 +42,16 @@ namespace Game.Core
         /// <summary>本局种子。0 表示使用 DefaultWorldSeed。种子属于启动配置，不在运行中途修改。</summary>
         [SerializeField] ulong _runSeed;
 
+        /// <summary>
+        /// 场景级场地覆盖。0 表示使用 Balance.ArenaHalfExtent。
+        /// Test_Arena 的墙体/相机是 20，正式 Run 是 67；不允许三套数字继续各写各的。
+        /// </summary>
+        [SerializeField] float _arenaHalfExtentOverride;
+
+        /// <summary>压力测试场启动时直接铺满固定数量敌人；正式 Run 保持关闭。</summary>
+        [SerializeField] bool _spawnTestEnemiesOnStart;
+        [SerializeField] int _testEnemyCount = 200;
+
         public EventBus Events => _composition != null ? _composition.Events : null;
         public RunState Run => _composition != null ? _composition.Run : null;
         public ConfigDatabase Config { get; private set; }
@@ -119,13 +129,16 @@ namespace Game.Core
 
             if (!ValidateContent())
             {
-                ShowStartupError("资源映射不完整", "UnitPrefabMap 缺失或不可用，无法创建玩家与敌人。");
+                ShowStartupError("启动资源缺失",
+                    "玩家/HUD/相机/箭 prefab/武器视觉目录/敌人预制体至少缺失一项；详细原因见 Console。");
                 return;
             }
 
             try
             {
-                _composition = RunComposition.Create(Config, _characterId, RunSeed, ProjectilePoolCapacity);
+                float? arenaOverride = _arenaHalfExtentOverride > 0f ? _arenaHalfExtentOverride : (float?)null;
+                _composition = RunComposition.Create(Config, _characterId, RunSeed, ProjectilePoolCapacity,
+                    arenaHalfExtent: arenaOverride);
             }
             catch (System.Exception e)
             {
@@ -138,16 +151,21 @@ namespace Game.Core
             _manualSpawnPool = BuildManualSpawnPool();
 
             if (!CreatePlayerView()) return;
-            CreateHud();
+            if (!CreateHud()) return;
             CreateUpgradeUi();
             CreateResultUi();
             CreatePauseUi();
             CreateViewPools();
-            BindSceneCamera();
+            if (!BindSceneCamera()) return;
             runLoop.Bind(this);
 
             // 一局只在这里开始。重开走场景重载，不允许同一个 RunController 二次 StartRun。
             RunController.StartRun();
+
+            if (_spawnTestEnemiesOnStart)
+            {
+                SpawnTestEnemies(Mathf.Max(0, _testEnemyCount));
+            }
 
             Debug.Log("[AppRoot] 开局就绪 起始武器 " +
                       (_composition.StartingWeapon != null ? _composition.StartingWeapon.Id : "无") +
@@ -167,6 +185,8 @@ namespace Game.Core
             CombatEffectsView?.Bind(null);
             CombatEffects.Clear();
             DamageNumbers.Clear();
+            ProjectileNockedHandoff.Clear();
+            ProjectileMuzzleRegistry.Clear();
             _composition?.Events.Clear();
             _composition = null;
             Instance = null;
@@ -197,8 +217,8 @@ namespace Game.Core
         }
 
         /// <summary>
-        /// 配置表里的 Id 必须能在预制体映射里找到。玩家缺失是致命错误，
-        /// 敌人缺失先给警告——刷到没有预制体的敌人时只会有看不见的怪。
+        /// 启动资源契约：玩家/HUD/箭 prefab、相机、武器视觉目录和所有敌人 prefab 都必须存在。
+        /// 任何一项缺失都是致命错误；继续装配只会得到一个半成品场景。
         /// </summary>
         bool ValidateContent()
         {
@@ -206,6 +226,36 @@ namespace Game.Core
             {
                 Debug.LogError("[AppRoot] 没有指定 UnitPrefabMap，玩家与敌人都实例化不出来。" +
                                "先跑一次 Tools/Game/生成预制体");
+                return false;
+            }
+
+            if (!_prefabMap.Has(PlayerPrefabId))
+            {
+                Debug.LogError("[AppRoot] UnitPrefabMap 缺少玩家预制体 '" + PlayerPrefabId + "'");
+                return false;
+            }
+
+            if (!_prefabMap.Has(HudPrefabId))
+            {
+                Debug.LogError("[AppRoot] UnitPrefabMap 缺少 HUD 预制体 '" + HudPrefabId + "'");
+                return false;
+            }
+
+            if (_prefabMap.ProjectileArrow == null)
+            {
+                Debug.LogError("[AppRoot] UnitPrefabMap 没有指定 ProjectileArrow，投射物表现会缺失");
+                return false;
+            }
+
+            if (FindObjectOfType<CameraRig>() == null)
+            {
+                Debug.LogError("[AppRoot] 场景里没有 CameraRig，镜头不会跟随玩家");
+                return false;
+            }
+
+            if (WeaponVisualCatalog.LoadDefault() == null)
+            {
+                Debug.LogError("[AppRoot] 找不到 Assets/Resources/WeaponVisualCatalog.asset");
                 return false;
             }
 
@@ -218,8 +268,9 @@ namespace Game.Core
 
             if (missing.Count > 0)
             {
-                Debug.LogWarning("[AppRoot] 以下 Id 没有对应预制体，刷到时会实例化失败:\n  " +
-                                 string.Join("\n  ", missing));
+                Debug.LogError("[AppRoot] 以下 Id 没有对应预制体，启动会留下看不见的敌人:\n  " +
+                               string.Join("\n  ", missing));
+                return false;
             }
 
             return true;
@@ -241,8 +292,9 @@ namespace Game.Core
             GameObject prefab = _prefabMap.Find(PlayerPrefabId);
             if (prefab == null)
             {
-                Debug.LogError($"[AppRoot] UnitPrefabMap 里没有 '{PlayerPrefabId}' 预制体，" +
-                               "先跑一次 Tools/Game/生成预制体");
+                const string detail = "UnitPrefabMap 里没有 Player 预制体，先跑一次 Tools/Game/生成预制体";
+                Debug.LogError("[AppRoot] " + detail);
+                ShowStartupError("玩家资源缺失", detail);
                 return false;
             }
 
@@ -252,7 +304,10 @@ namespace Game.Core
             PlayerView view = instance.GetComponent<PlayerView>();
             if (view == null)
             {
-                Debug.LogError("[AppRoot] 玩家预制体上没有 PlayerView");
+                const string detail = "玩家预制体上没有 PlayerView，无法创建玩家表现";
+                Debug.LogError("[AppRoot] " + detail);
+                ShowStartupError("玩家视图缺失", detail);
+                Destroy(instance);
                 return false;
             }
 
@@ -307,20 +362,33 @@ namespace Game.Core
 
         EnemyDef[] BuildManualSpawnPool()
         {
-            var pool = new List<EnemyDef>(Config.Enemies.Values);
+            // 压力场只铺普通怪：BOSS 不参与随机池，否则 200 个里会混进多只 9000 血巨偶，
+            // 测到的既不是导演稳态，也不是可比的普通同屏压力。
+            var pool = new List<EnemyDef>(Config.Enemies.Count);
+            foreach (EnemyDef enemy in Config.Enemies.Values)
+            {
+                if (enemy.Behaviour == EnemyBehaviourType.Boss) continue;
+                pool.Add(enemy);
+            }
+
             pool.Sort((a, b) => string.CompareOrdinal(a.Id, b.Id));
             return pool.ToArray();
         }
 
-        void CreateHud()
+        bool CreateHud()
         {
-            if (_prefabMap == null) return;
+            if (_prefabMap == null)
+            {
+                ShowStartupError("HUD 资源缺失", "UnitPrefabMap 为空，无法加载 HUD");
+                return false;
+            }
 
             GameObject prefab = _prefabMap.Find(HudPrefabId);
             if (prefab == null)
             {
+                ShowStartupError("HUD 资源缺失", "UnitPrefabMap 里没有 " + HudPrefabId);
                 Debug.LogError($"[AppRoot] UnitPrefabMap 里没有 '{HudPrefabId}'，屏幕上不会有 HUD");
-                return;
+                return false;
             }
 
             if (prefab.activeSelf)
@@ -335,14 +403,17 @@ namespace Game.Core
             HudView view = instance.GetComponent<HudView>();
             if (view == null)
             {
+                ShowStartupError("HUD 视图缺失", "HudCanvas 预制体上没有 HudView");
                 Debug.LogError("[AppRoot] HUD 预制体上没有 HudView");
-                return;
+                Destroy(instance);
+                return false;
             }
 
             view.Initialize(Events);
             view.Bind(Player, Run, RunController, Enemies, Director, Build);
             instance.SetActive(true);
             Hud = view;
+            return true;
         }
 
         /// <summary>
@@ -395,9 +466,13 @@ namespace Game.Core
             ResultUi = view;
         }
 
-        void BindSceneCamera()
+        bool BindSceneCamera()
         {
             Camera = FindObjectOfType<CameraRig>();
+            if (Camera != null) return true;
+
+            ShowStartupError("相机缺失", "当前场景没有 CameraRig，镜头不会跟随玩家");
+            return false;
         }
     }
 }

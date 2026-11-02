@@ -1,6 +1,8 @@
 using Game.Config;
+using Game.Core;
 using Game.Model;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace Game.Tests
 {
@@ -53,6 +55,19 @@ namespace Game.Tests
             Assert.AreEqual(1.5f, player.Stats[StatType.CritDamage], 1e-6f, "暴击伤害默认 150%");
             Assert.AreEqual(0f, player.Stats[StatType.AttackSpeed], 0f, "攻速加成默认 0");
             Assert.AreEqual(2.5f, player.Stats[StatType.PickupRadius], 1e-6f, "拾取范围默认 2.5 米（GDD 5.1），磁吸读它");
+        }
+
+        [Test]
+        public void RunCompositionCanOverrideArenaForTestStage()
+        {
+            RunComposition composition = RunComposition.Create(TestContent.Config(), "Scavenger", 123UL,
+                projectilePoolCapacity: 32, arenaHalfExtent: 20f);
+
+            Assert.AreEqual(20f, composition.Player.ArenaHalfExtent, 1e-4f);
+
+            int slot = composition.Enemies.Spawn(composition.Config.Enemies["Crawler"], new Vector2(50f, 0f));
+            EnemyModel enemy = composition.Enemies.Get(slot);
+            Assert.LessOrEqual(enemy.Position.x, 20f, "Test_Arena 的敌人也必须使用同一个场地边界");
         }
 
         [Test]
