@@ -128,6 +128,14 @@ namespace Game.Views
             _baseScale = transform.localScale;
             _lastShots = model.ShotsFired;
 
+            // 升级期间刚拿到的武器可能在视觉壳挂上之前就出手了：只比较 ShotsFired 会吞掉第一刀。
+            // 用模型里的 ShotAge 补播这一击；只在刚刚开火时补，不会让久未开火的武器凭空挥一下。
+            if (model.ShotsFired > 0 && model.ShotAge <= 0.05f)
+            {
+                _attacking = true;
+                _attackTime = Mathf.Min(model.ShotAge, _duration);
+            }
+
             if (_flash != null)
             {
                 _flashBaseScale = _flash.localScale;
@@ -144,6 +152,7 @@ namespace Game.Views
             }
 
             _rangeIndicator = WeaponRangeIndicatorFactory.Attach(_model, transform, _ownerKey);
+            UpdateRangeIndicator();
         }
 
         void Update()
@@ -172,13 +181,42 @@ namespace Game.Views
             ApplyPose();
             UpdateNockedArrow();
             UpdateFlash();
-            _rangeIndicator?.Refresh(_attacking);
+            UpdateRangeIndicator();
 
             if (firedThisFrame)
             {
                 ProjectileMuzzleRegistry.Set(_ownerKey, MuzzleWorld);
                 HandOffNockedArrow();
-                SpawnMeleeArc();
+            }
+        }
+
+        /// <summary>
+        /// 攻击窗口里的范围效果。近战只在伤害窗口 [MeleeWindowStart, MeleeWindowEnd + 0.06] 内显示，
+        /// 与原来的亮弧同步；远程在开火后的后坐动作期间显示射程圆。待机时线是关掉的。
+        /// </summary>
+        void UpdateRangeIndicator()
+        {
+            if (_rangeIndicator == null || _model == null) return;
+
+            if (!_attacking)
+            {
+                _rangeIndicator.Refresh(false, 0f);
+                return;
+            }
+
+            if (_model.Def.Kind == WeaponKind.Melee)
+            {
+                float start = _model.MeleeWindowStart;
+                float end = _model.MeleeWindowEnd + 0.06f;
+                bool visible = _attackTime >= start && _attackTime <= end;
+                float t = Mathf.InverseLerp(start, end, _attackTime);
+                float intensity = visible ? Mathf.Lerp(1f, 0.35f, t) : 0f;
+                _rangeIndicator.Refresh(visible, intensity);
+            }
+            else
+            {
+                float t = _duration > 0f ? Mathf.Clamp01(_attackTime / _duration) : 1f;
+                _rangeIndicator.Refresh(true, 1f - t * 0.55f);
             }
         }
 
@@ -189,30 +227,6 @@ namespace Game.Views
             if (Application.isPlaying) Destroy(_rangeIndicator.gameObject);
             else DestroyImmediate(_rangeIndicator.gameObject);
             _rangeIndicator = null;
-        }
-
-        /// <summary>
-        /// 近战挥砍的可见判定：以持有者脚底为圆心、真实有效射程为半径、SpreadDeg 为半角画一个扇形。
-        /// 弧线延迟到 WeaponModel.MeleeWindowStart 才亮起，与模拟层开始结算伤害同一步，
-        /// 所以「看到弧线」=「这一刀真的在判定」；没有目标时 ShotsFired 不变，也不会出现空挥的弧线。
-        /// 常驻的淡扇形/圆形由 WeaponRangeIndicator 子类负责，出手前也一直可见。
-        /// </summary>
-        void SpawnMeleeArc()
-        {
-            if (_model == null || _model.Def.Kind != WeaponKind.Melee) return;
-
-            // 持有者根节点：玩家是 WeaponRack 的父级，旅伴是 WeaponAnchor 的父级。
-            // 扇形判定以持有者中心为原点，弧线必须画在同一个原点上，不能画在偏一侧的武器槽。
-            Transform owner = WeaponRangeGeometry.OwnerOf(transform);
-            Vector3 origin = owner != null ? owner.position : transform.position;
-            Vector2 aim = WeaponRangeGeometry.Aim(_model, owner);
-            float range = WeaponRangeGeometry.Range(_model);
-            float halfAngle = WeaponRangeGeometry.HalfAngle(_model);
-            float delay = _model.MeleeWindowStart;
-            float duration = Mathf.Max(0.12f, _model.MeleeWindowEnd - _model.MeleeWindowStart + 0.10f);
-
-            Color tint = _ownerKey == 0 ? ProjectileViewSources.PlayerTint : ProjectileViewSources.CompanionTint;
-            CombatEffects.Slash(origin, aim, range, halfAngle, tint, delay, duration);
         }
 
         /// <summary>

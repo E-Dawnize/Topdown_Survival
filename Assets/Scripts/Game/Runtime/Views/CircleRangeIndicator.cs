@@ -7,11 +7,10 @@ namespace Game.Views
     {
         protected override int Segments => 64;
         protected override bool ClosedLoop => true;
-        protected override float Width => 0.028f;
-        protected override float IdleAlpha => 0.14f;
-        protected override float AttackAlpha => 0.08f;
+        protected override float Width => 0.055f;
+        protected override float AttackAlpha => 0.65f;
 
-        public override void Refresh(bool attacking)
+        protected override void Draw(float intensity)
         {
             if (Line == null || Model == null || Owner == null) return;
 
@@ -26,7 +25,7 @@ namespace Game.Views
                     Mathf.Sin(angle) * range));
             }
 
-            ApplyLineColor(attacking);
+            ApplyLineColor(intensity);
         }
     }
 }

@@ -1,7 +1,7 @@
 # 迭代进度
 > 文档目录：[docs/README.md](README.md)
 
-> 下面 I0 / I1 / I2 的记录保留当时进度。I2 之后当前工作区又做了一轮 P0/P1 修复与 v0.3 玩法重做；v0.3 见第一节，当前测试数为 227（222 EditMode + 5 PlayMode：相机装配、武器动作）。
+> 下面 I0 / I1 / I2 的记录保留当时进度。I2 之后当前工作区又做了一轮 P0/P1 修复与 v0.3 玩法重做；v0.3 见第一节，当前测试数为 237（227 EditMode + 10 PlayMode：相机装配、武器/范围动作、血条与飘字）。
 
 ## v0.4 掉落品阶、全屏吸取与战斗飘字
 
@@ -10,13 +10,14 @@
 | 任务 | 状态 | 证据 |
 |---|---|---|
 | 回血掉落率 | 完成 | Balance `HeartDropChance` 12%→9%；xlsx 与导出 JSON 同步；掉落概率测试按 9% 重跑 |
+| 武器攻击范围 | 完成 | `WeaponRangeIndicator` 基类 + 扇形/圆形子类；装备即创建、攻击窗口才显示；`WeaponModel.ShotAge` 补播晚挂视觉的第一次出手 |
 | 经验球品阶 | 完成 | `PickupTier` 由敌人 Tier/精英/BOSS 推导；`PickupViewPool` 五种颜色/大小；经验值仍取 Enemy.XpValue（精英 ×4） |
 | 全屏吸取 | 完成 | E/RB 输入、12 秒冷却（Balance `ExperienceCollectCooldown`）、`PickupSystem.CollectAllExperience` 只吸经验；右下 HUD 冷却条 + 扩散环 + 提示 |
 | 怪物血条 | 完成 | `EnemyHealthBar` 两条世界空间 LineRenderer；掉血后显示，精英/BOSS/Tier 4+ 常显 |
 | 伤害飘字 | 完成 | `DamageNumbers` 世界 TextMesh 池；普通/暴击/玩家受击三种颜色与字号，暴击带“暴击”前缀 |
-| 测试 | 完成 | EditMode 222→226；PlayMode 5→9（血条显隐、飘字普通/暴击文本、近战扇形/远程圆形常驻范围） |
+| 测试 | 完成 | EditMode 222→227；PlayMode 5→10（血条显隐、飘字普通/暴击文本、近战/远程攻击范围、晚挂视觉补播） |
 
-验证：独立工程副本 Unity 2022.3.34f1c1 批量模式 EditMode 226/226、PlayMode 9/9；`dotnet build` Runtime 与测试工程 0 错 0 警告。
+验证：独立工程副本 Unity 2022.3.34f1c1 批量模式 EditMode 227/227、PlayMode 10/10；`dotnet build` Runtime 与测试工程 0 错 0 警告。
 
 ## v0.3.4 攻击可见与 HUD 装备栏
 
@@ -24,7 +25,7 @@
 
 | 任务 | 状态 | 证据 |
 |---|---|---|
-| 武器范围常驻 | 完成 | `WeaponRangeIndicator` 抽象基类 + `FanRangeIndicator`/`CircleRangeIndicator` 子类；所有武器装备即显示射程，Melee/RangedBehaviour 每步刷新 `LastRange/AimDirection`；出手时近战再叠亮弧 |
+| 武器攻击范围显示 | 完成 | `WeaponRangeIndicator` 抽象基类 + `FanRangeIndicator`/`CircleRangeIndicator` 子类；装备即创建、攻击窗口才显示；Melee/RangedBehaviour 每步刷新 `LastRange/AimDirection`；`WeaponModel.ShotAge` 补播晚挂视觉的第一次出手 |
 | 敌人攻击可见 | 完成 | 近战/冲锋起手红环 + 出手红扇；投手蓄力后发射可见弹丸（`EnemyProjectileSystem` + 暗红箭头视图）；伤害只在起手结束/弹丸命中时结算 |
 | 范围伤害可见 | 完成 | 碰撞、爆炸、链电、环绕刀、反伤结算后发 `CombatAreaEffect`，`CombatEffectView` 画不同颜色范围环 |
 | HUD 装备栏 | 完成 | `BuildController.LoadoutRevision` 驱动左上装备栏重拼：武器/旅伴及等级、组合、数值卡数、指定 buff/道具名字；受击弹出伤害数字 |

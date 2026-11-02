@@ -201,7 +201,7 @@ namespace Game.Tests
         }
 
         [UnityTest]
-        public IEnumerator MeleeWeaponShowsRangeFanBeforeFirstSwing()
+        public IEnumerator MeleeRangeFanShowsOnlyDuringTheSwing()
         {
             WeaponVisualCatalog catalog = WeaponVisualCatalog.LoadDefault();
             Assert.IsNotNull(catalog, "缺少 WeaponVisualCatalog.asset");
@@ -219,24 +219,62 @@ namespace Game.Tests
             var root = new GameObject("MeleeRangePlayTest");
             WeaponVisual visual = WeaponVisual.Attach(root.transform, model, entry, Vector3.zero, 1f, 0);
             Assert.IsNotNull(visual);
-            Assert.IsNotNull(visual.RangeIndicator, "近战武器装上的第一帧就应该有常驻范围显示");
+            Assert.IsNotNull(visual.RangeIndicator, "近战武器装上的第一帧就应该有范围显示对象");
             Assert.IsTrue(visual.RangeIndicator is FanRangeIndicator, "近战应该使用扇形范围子类");
+            Assert.IsFalse(visual.RangeIndicator.IsVisible, "待机时扇形应隐藏，不是常亮");
             Assert.AreEqual(0, model.ShotsFired, "测试前提：还没有出过手");
-
-            yield return null;
 
             Transform range = root.transform.Find("Range_Fan_Sword");
             Assert.IsNotNull(range, "范围扇形应作为武器架的兄弟节点存在");
+
+            model.Fire(default);
+            yield return new WaitForSeconds(0.12f);
+
             LineRenderer line = range.GetComponent<LineRenderer>();
             Assert.IsNotNull(line);
-            Assert.IsTrue(line.enabled, "还没攻击时范围扇形也要可见");
+            Assert.IsTrue(visual.RangeIndicator.IsVisible, "挥砍伤害窗口内扇形应可见");
             Assert.Greater(line.positionCount, 2, "范围扇形至少要有一条弧线，不能只有中心点");
+
+            yield return new WaitForSeconds(entry.AttackDuration + 0.25f);
+            Assert.IsFalse(visual.RangeIndicator.IsVisible, "动作结束后扇形应重新隐藏");
 
             Object.Destroy(root);
         }
 
         [UnityTest]
-        public IEnumerator RangedWeaponShowsRangeCircleBeforeFirstShot()
+        public IEnumerator FirstMeleeShotBeforeVisualAttachStillShowsRange()
+        {
+            WeaponVisualCatalog catalog = WeaponVisualCatalog.LoadDefault();
+            Assert.IsNotNull(catalog, "缺少 WeaponVisualCatalog.asset");
+            WeaponVisualCatalog.Entry entry = catalog.Find("Sword");
+            Assert.IsNotNull(entry, "catalog 里没有 Sword");
+
+            var def = new WeaponDef
+            {
+                Id = "Sword", Name = "Sword", Kind = WeaponKind.Melee,
+                BaseDamage = 15f, Cooldown = 0.6f, Range = 2.2f,
+                SpreadDeg = 45f, Params = new[] { 0.08f, 0.22f }
+            };
+            var model = new WeaponModel(def, new NoopBehaviour());
+            model.Fire(default);
+            Assert.AreEqual(1, model.ShotsFired);
+            Assert.LessOrEqual(model.ShotAge, 0.001f, "测试前提：这一刀刚刚出手");
+
+            var root = new GameObject("LateMeleeVisualPlayTest");
+            WeaponVisual visual = WeaponVisual.Attach(root.transform, model, entry, Vector3.zero, 1f, 0);
+            Assert.IsNotNull(visual);
+            Assert.IsNotNull(visual.RangeIndicator);
+
+            yield return new WaitForSeconds(0.12f);
+
+            Assert.IsTrue(visual.RangeIndicator.IsVisible,
+                "视觉壳晚于第一刀挂上时，仍要补播这一刀的扇形，不能吞掉");
+
+            Object.Destroy(root);
+        }
+
+        [UnityTest]
+        public IEnumerator RangedRangeCircleShowsOnlyWhileFiring()
         {
             WeaponVisualCatalog catalog = WeaponVisualCatalog.LoadDefault();
             Assert.IsNotNull(catalog, "缺少 WeaponVisualCatalog.asset");
@@ -255,18 +293,24 @@ namespace Game.Tests
             var root = new GameObject("RangedRangePlayTest");
             WeaponVisual visual = WeaponVisual.Attach(root.transform, model, entry, Vector3.zero, 1f, 0);
             Assert.IsNotNull(visual);
-            Assert.IsNotNull(visual.RangeIndicator, "远程武器装上的第一帧就应该有常驻范围显示");
+            Assert.IsNotNull(visual.RangeIndicator, "远程武器装上的第一帧就应该有范围显示对象");
             Assert.IsTrue(visual.RangeIndicator is CircleRangeIndicator, "远程应该使用圆形范围子类");
+            Assert.IsFalse(visual.RangeIndicator.IsVisible, "待机时射程圆应隐藏");
             Assert.AreEqual(0, model.ShotsFired, "测试前提：还没有开过火");
-
-            yield return null;
 
             Transform range = root.transform.Find("Range_Circle_Bow");
             Assert.IsNotNull(range, "范围圆形应作为武器架的兄弟节点存在");
+
+            model.Fire(default);
+            yield return null;
+
             LineRenderer line = range.GetComponent<LineRenderer>();
             Assert.IsNotNull(line);
-            Assert.IsTrue(line.enabled, "还没开火时范围圆形也要可见");
+            Assert.IsTrue(visual.RangeIndicator.IsVisible, "开火后射程圆应短暂可见");
             Assert.Greater(line.positionCount, 8, "圆形范围要有足够的弧段");
+
+            yield return new WaitForSeconds(entry.AttackDuration + 0.15f);
+            Assert.IsFalse(visual.RangeIndicator.IsVisible, "后坐动作结束后射程圆应隐藏");
 
             Object.Destroy(root);
         }

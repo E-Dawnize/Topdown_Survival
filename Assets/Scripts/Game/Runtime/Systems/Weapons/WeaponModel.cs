@@ -17,11 +17,15 @@ namespace Game.Systems.Weapons
         /// </summary>
         const float MinSpeedDivisor = 0.01f;
 
+        /// <summary>没开过火时的哨兵值，避免用 0 当“刚开火”。</summary>
+        const float NeverFiredAge = 999f;
+
         public readonly WeaponDef Def;
         public readonly IWeaponBehaviour Behaviour;
         public readonly WeaponUpgradeRules Rules;
 
         float _cooldownRemaining;
+        float _shotAge = NeverFiredAge;
 
         public WeaponModel(WeaponDef def, IWeaponBehaviour behaviour, WeaponUpgradeRules rules = null)
         {
@@ -107,6 +111,13 @@ namespace Game.Systems.Weapons
         public int ShotsFired { get; private set; }
 
         /// <summary>
+        /// 距离最近一次开火过了多少模拟秒。视图层晚于武器创建时用它补播第一次攻击：
+        /// 升级期间刚拿到的武器可能在 WeaponVisual 挂上之前就出手了，只比较 ShotsFired 会把那一刀吞掉。
+        /// 没开过火时是一个很大的哨兵值，刚开火是 0。
+        /// </summary>
+        public float ShotAge => _shotAge;
+
+        /// <summary>
         /// 最近一次真正瞄准/挥砍的方向（世界 x,z）。纯表现层读它来转武器模型：
         /// 远程自动索敌可能不朝着玩家移动方向，只让武器架跟玩家转会让弓口和实际弹道对不上。
         /// 默认 zero 表示还没有开过火，表现层退回父节点朝向。
@@ -115,6 +126,12 @@ namespace Game.Systems.Weapons
 
         public void Tick(float dt)
         {
+            if (_shotAge < NeverFiredAge)
+            {
+                _shotAge += dt;
+                if (_shotAge > NeverFiredAge) _shotAge = NeverFiredAge;
+            }
+
             if (_cooldownRemaining <= 0f) return;
 
             _cooldownRemaining -= dt;
@@ -132,6 +149,7 @@ namespace Game.Systems.Weapons
             if (divisor < MinSpeedDivisor) divisor = MinSpeedDivisor;
 
             _cooldownRemaining = Cooldown / divisor;
+            _shotAge = 0f;
             ShotsFired++;
         }
     }

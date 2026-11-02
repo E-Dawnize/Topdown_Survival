@@ -6,9 +6,9 @@ namespace Game.Views
     public sealed class FanRangeIndicator : WeaponRangeIndicator
     {
         protected override int Segments => 20;
-        protected override float Width => 0.040f;
+        protected override float Width => 0.090f;
 
-        public override void Refresh(bool attacking)
+        protected override void Draw(float intensity)
         {
             if (Line == null || Model == null || Owner == null) return;
 
@@ -29,7 +29,7 @@ namespace Game.Views
             }
             Line.SetPosition(Segments + 1, origin);
 
-            ApplyLineColor(attacking);
+            ApplyLineColor(intensity);
         }
     }
 }

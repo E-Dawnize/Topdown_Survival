@@ -5,13 +5,14 @@ using UnityEngine;
 namespace Game.Views
 {
     /// <summary>
-    /// 武器常驻攻击范围的抽象基类。每种范围形状只实现自己的 <see cref="Refresh"/>：
+    /// 武器攻击范围效果的抽象基类。每种形状只实现自己的 <see cref="Draw"/>：
     ///   - 近战：扇形（FanRangeIndicator）
     ///   - 远程：圆形（CircleRangeIndicator）
     /// 以后要加锥形、直线、锁定框，只需要新增子类并在工厂里登记，不用改 WeaponVisual 里的逻辑。
     ///
-    /// 常驻显示与出手时的亮弧是两件事：本类画的是"这件武器现在够到哪里"，
-    /// 亮弧仍是攻击时的一次性反馈。范围线统一用世界坐标，挂点只负责层级回收。
+    /// 显示规则：对象在武器装上的第一帧就创建好（所以随时可以显示），
+    /// 但线只在攻击窗口内由 <see cref="Refresh"/> 打开；待机时隐藏，不是永久画在场上。
+    /// 范围线统一用世界坐标，挂点只负责层级回收。
     /// </summary>
     public abstract class WeaponRangeIndicator : MonoBehaviour
     {
@@ -25,9 +26,8 @@ namespace Game.Views
 
         protected abstract int Segments { get; }
         protected virtual bool ClosedLoop => false;
-        protected virtual float Width => 0.040f;
-        protected virtual float IdleAlpha => 0.20f;
-        protected virtual float AttackAlpha => 0.10f;
+        protected virtual float Width => 0.090f;
+        protected virtual float AttackAlpha => 0.90f;
 
         public void Initialize(WeaponModel model, Transform owner, int ownerKey)
         {
@@ -47,13 +47,27 @@ namespace Game.Views
             Line.receiveShadows = false;
             Line.loop = ClosedLoop;
             Line.positionCount = Segments;
-            Line.enabled = true;
+            Line.enabled = false;
 
-            Refresh(false);
+            Refresh(false, 0f);
         }
 
-        /// <summary>每帧调用。attacking 只影响透明度，不影响范围数值。</summary>
-        public abstract void Refresh(bool attacking);
+        /// <summary>
+        /// 每帧调用。visible 控制是否显示，intensity 让攻击弧在窗口内淡出。
+        /// 待机时 visible=false，线直接关掉；子类只在可见时绘制形状。
+        /// </summary>
+        public void Refresh(bool visible, float intensity)
+        {
+            if (Line == null) return;
+
+            bool show = visible && intensity > 0.01f;
+            if (Line.enabled != show) Line.enabled = show;
+            if (!show) return;
+
+            Draw(Mathf.Clamp01(intensity));
+        }
+
+        protected abstract void Draw(float intensity);
 
         protected Vector3 Origin(float height = 0.045f)
         {
@@ -77,12 +91,12 @@ namespace Game.Views
             return WeaponRangeGeometry.HalfAngle(Model);
         }
 
-        protected void ApplyLineColor(bool attacking)
+        protected void ApplyLineColor(float intensity)
         {
             Color color = OwnerKey == 0
                 ? ProjectileViewSources.PlayerTint
                 : ProjectileViewSources.CompanionTint;
-            color.a = attacking ? AttackAlpha : IdleAlpha;
+            color.a = AttackAlpha * Mathf.Clamp01(intensity);
             Line.startColor = color;
             Line.endColor = color;
         }
@@ -124,7 +138,7 @@ namespace Game.Views
 
     /// <summary>
     /// 按武器类型创建常驻范围显示。新增形状时只在这里加一个 case；
-    /// WeaponVisual 只负责把当前 attacking 状态转给基类的 Refresh。
+    /// WeaponVisual 只负责把攻击窗口的 visible/intensity 转给基类 Refresh。
     /// </summary>
     public static class WeaponRangeIndicatorFactory
     {

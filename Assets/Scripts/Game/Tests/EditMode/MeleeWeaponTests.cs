@@ -182,6 +182,23 @@ namespace Game.Tests
         }
 
         [Test]
+        public void ShotAgeIsUsableForLateVisualCatchUp()
+        {
+            EnemySystem enemies = NewEnemies();
+            WeaponSystem weapons = NewWeapons(enemies);
+            WeaponModel sword = weapons.AddWeapon(SwordDef());
+
+            Assert.Greater(sword.ShotAge, 100f, "没开过火时应是很大的哨兵值");
+            sword.Tick(1f);
+            Assert.Greater(sword.ShotAge, 100f, "没开火时 Tick 不应把哨兵值变成 0");
+
+            sword.Fire(default);
+            Assert.AreEqual(0f, sword.ShotAge, 1e-5f, "真正开火时 ShotAge 归零");
+            sword.Tick(0.2f);
+            Assert.AreEqual(0.2f, sword.ShotAge, 1e-4f, "模拟步应推进 ShotAge");
+        }
+
+        [Test]
         public void DoublingAttackSpeedDoublesDamageOverTheSameDuration()
         {
             // 攻速加成 +100% → 间隔 0.6 / 2 = 0.3 秒，6 秒内出手次数翻倍，总伤害也应该翻倍。
