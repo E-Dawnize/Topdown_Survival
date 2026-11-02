@@ -1,7 +1,21 @@
 # 迭代进度
 > 文档目录：[docs/README.md](README.md)
 
-> 下面 I0 / I1 / I2 的记录保留当时进度。I2 之后当前工作区又做了一轮 P0/P1 修复与 v0.3 玩法重做；v0.3 见第一节，当前测试数为 241（227 EditMode + 14 PlayMode：相机装配、武器/范围动作、血条与飘字、主菜单全流程）。
+> 下面 I0 / I1 / I2 的记录保留当时进度。I2 之后当前工作区又做了一轮 P0/P1 修复与 v0.3 玩法重做；v0.3 见第一节，当前测试数为 243（228 EditMode + 15 PlayMode：相机装配、武器/范围动作、血条与飘字、主菜单/暂停全流程）。
+
+## v0.6 暂停菜单与退出
+
+状态：代码与自动化验证完成；主工程 Unity Play 的排版与真实输入仍需手测。
+
+| 任务 | 状态 | 证据 |
+|---|---|---|
+| 暂停状态 | 完成 | `RunPhase.Paused` + `RunController.Pause/Resume`；只允许 Battle/Boss，恢复回原阶段，暂停期间计时与战斗系统不推进 |
+| 暂停入口 | 完成 | Player Map 新增 Pause：Esc / 手柄 Start；`RunLoop` 每帧检查，hitstop/零步帧也能响应 |
+| 暂停界面 | 完成 | `PauseView` 运行时 Overlay：继续游戏 / 返回主菜单 / 退出游戏；菜单输入走 `MenuInput`，暂停时切 UI Map |
+| HUD | 完成 | 左下角新增 `Esc 暂停` 提示；暂停期间 HUD 冻结 |
+| 测试 | 完成 | EditMode 227→228（暂停/恢复状态机）；PlayMode 14→15（暂停冻结、继续、返回主菜单） |
+
+验证：独立工程副本 Unity 2022.3.34f1c1 批量模式 EditMode 228/228、PlayMode 15/15；`dotnet build` Runtime 与测试工程 0 错 0 警告。
 
 ## v0.5 主菜单与全流程
 

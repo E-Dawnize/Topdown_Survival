@@ -177,7 +177,9 @@ namespace Game.Views
                 bossName: director != null ? director.BossName : string.Empty,
                 bossEnraged: bossEnraged,
                 frozen: runController != null &&
-                        (runController.Phase == RunPhase.LevelUp || runController.Phase == RunPhase.GameOver),
+                        (runController.Phase == RunPhase.LevelUp ||
+                         runController.Phase == RunPhase.Paused ||
+                         runController.Phase == RunPhase.GameOver),
                 buildRevision: build != null ? build.LoadoutRevision : 0);
         }
 

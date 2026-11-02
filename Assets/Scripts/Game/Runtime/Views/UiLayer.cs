@@ -15,6 +15,9 @@ namespace Game.Views
         /// <summary>结算面板。升级之后不可能再开，取更大只是给以后留顺序。</summary>
         public const int Result = 30;
 
+        /// <summary>暂停菜单。战斗中被手动打开，盖住 HUD 与升级面板之外的所有内容。</summary>
+        public const int Pause = 35;
+
         /// <summary>主菜单。自成场景，取最大只是留顺序。</summary>
         public const int Menu = 40;
 

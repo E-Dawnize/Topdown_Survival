@@ -53,6 +53,33 @@ namespace Game.Tests
         }
 
         [Test]
+        public void ManualPauseStopsCombatAndResumeRestoresPhase()
+        {
+            TestRun run = TestRun.Create();
+            var events = new List<string>();
+            run.Bus.Subscribe<RunPaused>(_ => events.Add("Paused"));
+            run.Bus.Subscribe<RunResumed>(_ => events.Add("Resumed"));
+            run.Bus.Flush();
+
+            float before = run.Controller.RunElapsed;
+            run.Controller.Pause();
+            run.Bus.Flush();
+
+            Assert.AreEqual(RunPhase.Paused, run.Controller.Phase);
+            Assert.IsFalse(run.Controller.CanPause, "暂停中不能再次暂停");
+            CollectionAssert.AreEqual(new[] { "Paused" }, events);
+
+            run.Controller.Tick(1f);
+            Assert.AreEqual(before, run.Controller.RunElapsed, 1e-6f, "暂停期间计时不应推进");
+
+            run.Controller.Resume();
+            run.Bus.Flush();
+            Assert.AreEqual(RunPhase.Battle, run.Controller.Phase);
+            Assert.IsTrue(run.Controller.CanPause);
+            CollectionAssert.AreEqual(new[] { "Paused", "Resumed" }, events);
+        }
+
+        [Test]
         public void ExperiencePausesBattleUntilUpgradeChosen()
         {
             TestRun run = TestRun.Create();

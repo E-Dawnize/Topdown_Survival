@@ -86,6 +86,7 @@ namespace Game.Views
             widgets.BuildStatusLine(root);
             widgets.BuildEquipmentPanel(root);
             widgets.BuildDamageText(root);
+            widgets.BuildPauseHint(root);
             widgets.BuildXpBar(root);
             widgets.BuildCollectBar(root);
             widgets.BuildBossBar(root);
@@ -161,6 +162,19 @@ namespace Game.Views
             CollectText = UiFactory.CreateText(bar.Back.transform, "CollectText", "E 全屏吸取", 16,
                 TextAnchor.MiddleCenter, CollectReadyColor);
             UiFactory.PlaceCentered(CollectText.rectTransform, Vector2.zero, new Vector2(210f, 24f));
+        }
+
+        /// <summary>左下角键位提示上方补一行暂停键，避免玩家不知道 Esc 能暂停。</summary>
+        void BuildPauseHint(Transform root)
+        {
+            Text hint = UiFactory.CreateText(root, "PauseHint", "Esc 暂停", 15, TextAnchor.MiddleLeft,
+                StatusColor);
+            RectTransform rect = hint.rectTransform;
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.zero;
+            rect.pivot = Vector2.zero;
+            rect.sizeDelta = new Vector2(180f, 20f);
+            rect.anchoredPosition = new Vector2(24f, 58f);
         }
 
         /// <summary>BOSS 条：顶部中间，状态行下方。隐藏时不占画面。</summary>

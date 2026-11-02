@@ -64,6 +64,41 @@ namespace Game.Tests
         }
 
         [UnityTest]
+        public IEnumerator PauseFreezesRunAndCanReturnToMainMenu()
+        {
+            yield return LoadScene(UnitySceneFlow.MainMenuScene);
+            MainMenuView menu = Object.FindObjectOfType<MainMenuView>();
+            Assert.IsNotNull(menu);
+            menu.StartRun();
+            yield return WaitForScene(UnitySceneFlow.RunScene);
+
+            AppRoot root = Object.FindObjectOfType<AppRoot>();
+            Assert.IsNotNull(root);
+            Assert.IsNotNull(root.PauseUi, "Run 场景应创建暂停面板");
+
+            root.RunController.Pause();
+            yield return WaitUntil(() => root.PauseUi.IsVisible, 120);
+            Assert.AreEqual(RunPhase.Paused, root.RunController.Phase);
+            Assert.IsTrue(root.Input.UiMode, "暂停面板应切换到 UI 输入");
+
+            float frozenElapsed = root.RunController.RunElapsed;
+            yield return null;
+            yield return null;
+            Assert.AreEqual(frozenElapsed, root.RunController.RunElapsed, 1e-5f, "暂停期间游戏时间不应推进");
+
+            root.PauseUi.ResumeGame();
+            yield return WaitUntil(() => root.RunController.Phase == RunPhase.Battle, 120);
+            Assert.IsFalse(root.PauseUi.IsVisible, "继续游戏后暂停面板应关闭");
+            Assert.IsFalse(root.Input.UiMode, "继续游戏后应切回 Player 输入");
+
+            root.RunController.Pause();
+            yield return WaitUntil(() => root.PauseUi.IsVisible, 120);
+            root.PauseUi.ReturnToMainMenu();
+            yield return WaitForScene(UnitySceneFlow.MainMenuScene);
+            Assert.IsNotNull(Object.FindObjectOfType<MainMenuView>(), "暂停菜单应能返回主菜单");
+        }
+
+        [UnityTest]
         public IEnumerator DeathShowsResultAndEscapeReturnsToMainMenu()
         {
             yield return LoadScene(UnitySceneFlow.MainMenuScene);

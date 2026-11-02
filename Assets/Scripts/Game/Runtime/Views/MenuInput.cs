@@ -52,6 +52,34 @@ namespace Game.Views
             return gamepad != null && gamepad.buttonNorth.wasPressedThisFrame;
         }
 
+        /// <summary>垂直导航：-1 上 / +1 下 / 0 无。暂停菜单用。</summary>
+        public static float NavigateY(InputService input)
+        {
+            if (input != null)
+            {
+                float axis = input.UiNavigate.y;
+                if (Mathf.Abs(axis) >= 0.5f) return -Mathf.Sign(axis);
+            }
+
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard != null)
+            {
+                if (keyboard.upArrowKey.wasPressedThisFrame || keyboard.wKey.wasPressedThisFrame) return -1f;
+                if (keyboard.downArrowKey.wasPressedThisFrame || keyboard.sKey.wasPressedThisFrame) return 1f;
+            }
+
+            Gamepad gamepad = Gamepad.current;
+            if (gamepad != null)
+            {
+                float stick = gamepad.leftStick.y.ReadValue();
+                if (Mathf.Abs(stick) >= 0.5f) return -Mathf.Sign(stick);
+                if (gamepad.dpad.up.wasPressedThisFrame) return -1f;
+                if (gamepad.dpad.down.wasPressedThisFrame) return 1f;
+            }
+
+            return 0f;
+        }
+
         /// <summary>水平导航：-1 左 / +1 右 / 0 无。优先读 InputService 的 UI Map，读不到再看设备。</summary>
         public static float NavigateX(InputService input)
         {

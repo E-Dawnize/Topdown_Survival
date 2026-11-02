@@ -260,6 +260,16 @@ namespace Game.Core.Events
         }
     }
 
+    /// <summary>战斗被手动暂停。PauseView 用它开面板；模拟阶段同时已切到 RunPhase.Paused。</summary>
+    public readonly struct RunPaused
+    {
+    }
+
+    /// <summary>从暂停恢复。PauseView 关面板并把输入切回 Player Map。</summary>
+    public readonly struct RunResumed
+    {
+    }
+
     public readonly struct BossFightStarted
     {
         public readonly string BossId;

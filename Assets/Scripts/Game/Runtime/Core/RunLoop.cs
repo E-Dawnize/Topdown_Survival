@@ -73,6 +73,12 @@ namespace Game.Core
             RunSimulation simulation = root.Simulation;
             if (simulation == null) return;
 
+            // 暂停是实时 UI 动作：即使本帧没有固定步（hitstop/高刷新率）也要响应。
+            if (root.Input != null && root.RunController != null && root.Input.PausePressed)
+            {
+                root.RunController.Pause();
+            }
+
             if (!_viewReady)
             {
                 _prevPos = _currPos = simulation.Player.Position;

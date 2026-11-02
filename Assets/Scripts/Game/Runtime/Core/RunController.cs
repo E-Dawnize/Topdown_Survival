@@ -22,6 +22,9 @@ namespace Game.Core
         /// <summary>时间到，BOSS 战。普通刷怪停止，导演只负责 BOSS 与召唤。</summary>
         Boss,
 
+        /// <summary>手动暂停：战斗系统不推进，等 Resume 回到暂停前的阶段。</summary>
+        Paused,
+
         /// <summary>这一局结束（击杀 BOSS 或死亡）。之后不再推进任何状态。</summary>
         GameOver
     }
@@ -55,6 +58,7 @@ namespace Game.Core
 
         float _runElapsed;
         bool _bossStarted;
+        RunPhase _phaseBeforePause = RunPhase.Battle;
 
         public RunController(PlayerModel player, RunState run, IReadOnlyList<DirectorDef> directors,
             IEventBus events, ulong seed, string characterId, BuildController build, DirectorSystem director,
@@ -109,6 +113,11 @@ namespace Game.Core
         /// <summary>BOSS 状态的单一来源。更细的状态（Enraged/Id/UnitId…）直接读它。</summary>
         public BossFight BossFight => _bossFight;
 
+        /// <summary>只有战斗与 BOSS 阶段能被暂停；升级/结算/Idle 不再叠一个暂停层。</summary>
+        public bool CanPause => Phase == RunPhase.Battle || Phase == RunPhase.Boss;
+
+        public bool IsPaused => Phase == RunPhase.Paused;
+
         public bool BossDefeated => _bossFight.Defeated;
         public bool BossActive => _bossFight.Active;
         public string BossName => _bossFight.Name;
@@ -130,6 +139,7 @@ namespace Game.Core
 
             _runElapsed = 0f;
             _bossStarted = false;
+            _phaseBeforePause = RunPhase.Battle;
             _player.ContactTimer = 0f;
 
             _run.ResetForNewRun();
@@ -153,8 +163,30 @@ namespace Game.Core
                     TickBoss(dt);
                     return;
                 default:
-                    return;   // Idle 等 StartRun；LevelUp 暂停；GameOver 之后不再推进
+                    return;   // Idle 等 StartRun；LevelUp / Paused 暂停；GameOver 之后不再推进
             }
+        }
+
+        /// <summary>
+        /// 手动暂停。只允许 Battle/Boss；重复 Pause 不重复发事件。
+        /// 暂停不改 _runElapsed，恢复后从原时刻继续。
+        /// </summary>
+        public void Pause()
+        {
+            if (!CanPause) return;
+
+            _phaseBeforePause = Phase;
+            Phase = RunPhase.Paused;
+            _events.Publish(new RunPaused());
+        }
+
+        /// <summary>从暂停恢复。只允许在 Paused 状态调用。</summary>
+        public void Resume()
+        {
+            if (Phase != RunPhase.Paused) return;
+
+            Phase = _phaseBeforePause == RunPhase.Boss ? RunPhase.Boss : RunPhase.Battle;
+            _events.Publish(new RunResumed());
         }
 
         /// <summary>

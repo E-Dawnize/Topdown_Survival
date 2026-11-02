@@ -635,7 +635,7 @@ Assets/
     Systems/Weapons/ WeaponSystem, WeaponModel, WeaponDamage, ShooterStats,
                     RangedBehaviour, MeleeBehaviour, ProjectileSystem, WeaponUpgradeRules
     Views/          HudView, HudValues, HudWidgets, UiFactory, UiLayer, UpgradeView,
-                    ResultView, ResultLines, MainMenuView, PlayerView, UnitView,
+                    ResultView, ResultLines, MainMenuView, MenuInput, PauseView, PlayerView, UnitView,
                     CompanionView, PickupView, ProjectileView, WeaponVisual,
                     WeaponVisualStyle, WeaponVisualCatalog, CombatEffects, CombatEffectView,
                     EnemyProjectileViewPool, EnemyHealthBar, DamageNumbers, WeaponRangeIndicator,

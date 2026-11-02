@@ -16,6 +16,7 @@ namespace Game.Services
         InputAction _move;
         InputAction _dash;
         InputAction _collect;
+        InputAction _pause;
         InputAction _uiNavigate;
         InputAction _uiSubmit;
         InputAction _uiCancel;
@@ -27,6 +28,9 @@ namespace Game.Services
         public Vector2 MoveAxis => Last.Move;
         public bool DashPressed => Last.DashPressed;
         public bool CollectPressed => Last.CollectPressed;
+
+        /// <summary>游戏内暂停（Esc / 手柄 Start）。只用于战斗阶段的暂停入口，不进模拟快照。</summary>
+        public bool PausePressed => _pause != null && _pause.WasPressedThisFrame();
         public bool UiMode { get; private set; }
 
         /// <summary>
@@ -147,6 +151,10 @@ namespace Game.Services
             // 全屏吸取经验：GDD 的 E/RB 主动技能位。只吸经验球，不吸心。
             _collect = _playerMap.AddAction("Collect", InputActionType.Button, "<Keyboard>/e");
             _collect.AddBinding("<Gamepad>/rightShoulder");
+
+            // 暂停：Esc / 手柄 Start。暂停面板打开后 Player Map 会关闭，恢复走面板自己的输入。
+            _pause = _playerMap.AddAction("Pause", InputActionType.Button, "<Keyboard>/escape");
+            _pause.AddBinding("<Gamepad>/startButton");
 
 
 

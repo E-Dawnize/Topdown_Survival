@@ -64,10 +64,14 @@ namespace Game.Views
             _sceneFlow.LoadRun();
         }
 
-        /// <summary>独立构建里按 Esc / 手柄 B 退出；编辑器里 Application.Quit 不会关编辑器。</summary>
+        /// <summary>独立构建里按 Esc / 手柄 B 退出；编辑器里直接结束 Play，方便手测。</summary>
         static void QuitGame()
         {
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
             Application.Quit();
+#endif
         }
 
         /// <summary>

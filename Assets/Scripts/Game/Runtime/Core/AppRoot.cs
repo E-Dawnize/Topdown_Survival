@@ -55,6 +55,7 @@ namespace Game.Core
         public HudView Hud { get; private set; }
         public UpgradeView UpgradeUi { get; private set; }
         public ResultView ResultUi { get; private set; }
+        public PauseView PauseUi { get; private set; }
         public CameraRig Camera { get; private set; }
 
         public EnemySystem Enemies => _composition != null ? _composition.Enemies : null;
@@ -140,6 +141,7 @@ namespace Game.Core
             CreateHud();
             CreateUpgradeUi();
             CreateResultUi();
+            CreatePauseUi();
             CreateViewPools();
             BindSceneCamera();
             runLoop.Bind(this);
@@ -358,6 +360,23 @@ namespace Game.Core
             view.Bind(Build, RunController, Input);
             go.SetActive(true);
             UpgradeUi = view;
+        }
+
+        /// <summary>
+        /// 暂停菜单。RunController 只负责切 Paused 阶段；面板订阅 RunPaused/RunResumed 自己显示/隐藏，
+        /// 继续游戏、回主菜单、退出三条路都在面板里收口。
+        /// </summary>
+        void CreatePauseUi()
+        {
+            var go = new GameObject("PauseCanvas", typeof(RectTransform));
+            go.transform.SetParent(transform, false);
+            go.SetActive(false);
+
+            var view = go.AddComponent<PauseView>();
+            view.Initialize(Events);
+            view.Bind(Input, RunController, new UnitySceneFlow());
+            go.SetActive(true);
+            PauseUi = view;
         }
 
         /// <summary>
