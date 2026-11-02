@@ -14,9 +14,9 @@
 | 全屏吸取 | 完成 | E/RB 输入、12 秒冷却（Balance `ExperienceCollectCooldown`）、`PickupSystem.CollectAllExperience` 只吸经验；右下 HUD 冷却条 + 扩散环 + 提示 |
 | 怪物血条 | 完成 | `EnemyHealthBar` 两条世界空间 LineRenderer；掉血后显示，精英/BOSS/Tier 4+ 常显 |
 | 伤害飘字 | 完成 | `DamageNumbers` 世界 TextMesh 池；普通/暴击/玩家受击三种颜色与字号，暴击带“暴击”前缀 |
-| 测试 | 完成 | EditMode 222→226；PlayMode 5→7（血条显隐、飘字普通/暴击文本） |
+| 测试 | 完成 | EditMode 222→226；PlayMode 5→8（血条显隐、飘字普通/暴击文本、出手前常驻范围扇形） |
 
-验证：独立工程副本 Unity 2022.3.34f1c1 批量模式 EditMode 226/226、PlayMode 7/7；`dotnet build` Runtime 与测试工程 0 错 0 警告。
+验证：独立工程副本 Unity 2022.3.34f1c1 批量模式 EditMode 226/226、PlayMode 8/8；`dotnet build` Runtime 与测试工程 0 错 0 警告。
 
 ## v0.3.4 攻击可见与 HUD 装备栏
 
@@ -24,7 +24,7 @@
 
 | 任务 | 状态 | 证据 |
 |---|---|---|
-| 近战挥砍可见 | 完成 | `CombatEffects` 扇形弧线，半径/半角取 `WeaponModel.LastRange/SpreadDeg`，延迟到 `MeleeWindowStart` 才亮；模拟判定与弧线共用同一个窗口 |
+| 近战挥砍可见 | 完成 | 装备后即有常驻淡扇形（`WeaponVisual.UpdateMeleeRange`），半径/半角取 `WeaponModel.LastRange/SpreadDeg`；出手时再叠 `CombatEffects` 亮弧，模拟判定与亮弧共用伤害窗口 |
 | 敌人攻击可见 | 完成 | 近战/冲锋起手红环 + 出手红扇；投手蓄力后发射可见弹丸（`EnemyProjectileSystem` + 暗红箭头视图）；伤害只在起手结束/弹丸命中时结算 |
 | 范围伤害可见 | 完成 | 碰撞、爆炸、链电、环绕刀、反伤结算后发 `CombatAreaEffect`，`CombatEffectView` 画不同颜色范围环 |
 | HUD 装备栏 | 完成 | `BuildController.LoadoutRevision` 驱动左上装备栏重拼：武器/旅伴及等级、组合、数值卡数、指定 buff/道具名字；受击弹出伤害数字 |

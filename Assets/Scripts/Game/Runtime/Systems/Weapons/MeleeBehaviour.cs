@@ -45,6 +45,10 @@ namespace Game.Systems.Weapons
 
         public void Tick(WeaponModel weapon, Vector2 shooterPosition, Vector2 facing, in ShooterStats stats, float dt)
         {
+            // 射程每步都写一份：近战的常驻范围指示器在第一次出手之前就要显示
+            // 加成后的射程，不能等到 Fire 时才更新。
+            weapon.LastRange = stats.EffectiveRange(weapon.Range);
+
             if (_swinging)
             {
                 _swingTime += dt;

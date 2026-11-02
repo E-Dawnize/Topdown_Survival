@@ -52,7 +52,16 @@ namespace Game.Views
         Quaternion _nockedBaseRotation = Quaternion.identity;
         Vector3 _nockedBaseScale = Vector3.one;
 
+        // 近战常驻范围扇形。它和攻击时的亮弧分开：常驻线在武器装上的第一帧就存在，
+        // 不依赖 ShotsFired，所以“还没出手”时玩家也看得到够到多远。
+        const int RangeSegments = 20;
+        LineRenderer _meleeRangeLine;
+        GameObject _meleeRangeObject;
+
         public WeaponModel Model => _model;
+
+        /// <summary>测试与调试用：近战常驻范围线是否存在。</summary>
+        public bool HasMeleeRange => _meleeRangeLine != null;
 
         public WeaponAttackStyle Style => _style;
 
@@ -135,6 +144,8 @@ namespace Game.Views
                 _nockedArrow.gameObject.SetActive(false);
                 TintNockedArrow();
             }
+
+            if (_model.Def.Kind == WeaponKind.Melee) CreateMeleeRangeIndicator();
         }
 
         void Update()
@@ -163,6 +174,7 @@ namespace Game.Views
             ApplyPose();
             UpdateNockedArrow();
             UpdateFlash();
+            UpdateMeleeRange();
 
             if (firedThisFrame)
             {
@@ -172,10 +184,113 @@ namespace Game.Views
             }
         }
 
+        void CreateMeleeRangeIndicator()
+        {
+            Transform parent = transform.parent;
+            if (parent == null) return;
+
+            _meleeRangeObject = new GameObject("MeleeRange_" + _model.Id);
+            _meleeRangeObject.transform.SetParent(parent, false);
+
+            var line = _meleeRangeObject.AddComponent<LineRenderer>();
+            line.sharedMaterial = CombatEffects.LineMaterial;
+            line.useWorldSpace = true;
+            line.alignment = LineAlignment.View;
+            line.textureMode = LineTextureMode.Stretch;
+            line.widthMultiplier = 0.040f;
+            line.numCapVertices = 0;
+            line.numCornerVertices = 0;
+            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            line.receiveShadows = false;
+            line.positionCount = RangeSegments + 2;
+            line.loop = false;
+            line.enabled = false;
+            _meleeRangeLine = line;
+
+            UpdateMeleeRange();
+        }
+
+        /// <summary>
+        /// 常驻扇形：始终以持有者中心为圆心，显示当前有效射程与半角。
+        /// 亮度比攻击时的弧线低很多，只做“够到多远”的参照；颜色沿用玩家/旅伴的弹道色。
+        /// </summary>
+        void UpdateMeleeRange()
+        {
+            if (_meleeRangeLine == null || _model == null) return;
+
+            Transform owner = OwnerTransform();
+            if (owner == null)
+            {
+                _meleeRangeLine.enabled = false;
+                return;
+            }
+
+            Vector3 origin = owner.position;
+            origin.y = 0.045f;
+            Vector2 aim = CurrentAim(owner);
+            float range = CurrentRange();
+            float half = CurrentHalfAngle() * Mathf.Deg2Rad;
+            float aimAngle = Mathf.Atan2(aim.y, aim.x);
+
+            _meleeRangeLine.enabled = true;
+            _meleeRangeLine.positionCount = RangeSegments + 2;
+            _meleeRangeLine.SetPosition(0, origin);
+            for (int i = 0; i <= RangeSegments; i++)
+            {
+                float angle = Mathf.Lerp(-half, half, i / (float)RangeSegments);
+                float world = aimAngle + angle;
+                _meleeRangeLine.SetPosition(i + 1, origin + new Vector3(Mathf.Cos(world), 0f,
+                    Mathf.Sin(world)) * range);
+            }
+            _meleeRangeLine.SetPosition(RangeSegments + 1, origin);
+
+            Color tint = _ownerKey == 0
+                ? ProjectileViewSources.PlayerTint
+                : ProjectileViewSources.CompanionTint;
+            tint.a = _attacking ? 0.12f : 0.22f;
+            _meleeRangeLine.startColor = tint;
+            _meleeRangeLine.endColor = tint;
+        }
+
+        Transform OwnerTransform()
+        {
+            Transform anchor = transform.parent != null ? transform.parent : transform;
+            return anchor.parent != null ? anchor.parent : anchor;
+        }
+
+        Vector2 CurrentAim(Transform owner)
+        {
+            Vector2 aim = _model.AimDirection;
+            if (aim.sqrMagnitude >= 1e-8f) return aim;
+
+            Vector3 forward = owner.forward;
+            return new Vector2(forward.x, forward.z);
+        }
+
+        float CurrentRange()
+        {
+            return _model.LastRange > 0f ? _model.LastRange : _model.Range;
+        }
+
+        float CurrentHalfAngle()
+        {
+            return _model.SpreadDeg > 0f ? _model.SpreadDeg : 45f;
+        }
+
+        void OnDestroy()
+        {
+            if (_meleeRangeObject == null) return;
+
+            if (Application.isPlaying) Destroy(_meleeRangeObject);
+            else DestroyImmediate(_meleeRangeObject);
+            _meleeRangeObject = null;
+        }
+
         /// <summary>
         /// 近战挥砍的可见判定：以持有者脚底为圆心、真实有效射程为半径、SpreadDeg 为半角画一个扇形。
         /// 弧线延迟到 WeaponModel.MeleeWindowStart 才亮起，与模拟层开始结算伤害同一步，
         /// 所以「看到弧线」=「这一刀真的在判定」；没有目标时 ShotsFired 不变，也不会出现空挥的弧线。
+        /// 常驻的淡扇形由 UpdateMeleeRange 负责，出手前也一直可见。
         /// </summary>
         void SpawnMeleeArc()
         {
@@ -183,18 +298,11 @@ namespace Game.Views
 
             // 持有者根节点：玩家是 WeaponRack 的父级，旅伴是 WeaponAnchor 的父级。
             // 扇形判定以持有者中心为原点，弧线必须画在同一个原点上，不能画在偏一侧的武器槽。
-            Transform anchor = transform.parent != null ? transform.parent : transform;
-            Transform owner = anchor.parent != null ? anchor.parent : anchor;
+            Transform owner = OwnerTransform();
             Vector3 origin = owner.position;
-            Vector2 aim = _model.AimDirection;
-            if (aim.sqrMagnitude < 1e-8f)
-            {
-                Vector3 forward = owner.forward;
-                aim = new Vector2(forward.x, forward.z);
-            }
-
-            float range = _model.LastRange > 0f ? _model.LastRange : _model.Range;
-            float halfAngle = _model.SpreadDeg > 0f ? _model.SpreadDeg : 45f;
+            Vector2 aim = CurrentAim(owner);
+            float range = CurrentRange();
+            float halfAngle = CurrentHalfAngle();
             float delay = _model.MeleeWindowStart;
             float duration = Mathf.Max(0.12f, _model.MeleeWindowEnd - _model.MeleeWindowStart + 0.10f);
 

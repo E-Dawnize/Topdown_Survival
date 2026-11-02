@@ -201,6 +201,40 @@ namespace Game.Tests
         }
 
         [UnityTest]
+        public IEnumerator MeleeWeaponShowsRangeFanBeforeFirstSwing()
+        {
+            WeaponVisualCatalog catalog = WeaponVisualCatalog.LoadDefault();
+            Assert.IsNotNull(catalog, "缺少 WeaponVisualCatalog.asset");
+            WeaponVisualCatalog.Entry entry = catalog.Find("Sword");
+            Assert.IsNotNull(entry, "catalog 里没有 Sword");
+
+            var def = new WeaponDef
+            {
+                Id = "Sword", Name = "Sword", Kind = WeaponKind.Melee,
+                BaseDamage = 15f, Cooldown = 0.6f, Range = 2.2f,
+                SpreadDeg = 45f, Params = new[] { 0.08f, 0.22f }
+            };
+            var model = new WeaponModel(def, new NoopBehaviour());
+
+            var root = new GameObject("MeleeRangePlayTest");
+            WeaponVisual visual = WeaponVisual.Attach(root.transform, model, entry, Vector3.zero, 1f, 0);
+            Assert.IsNotNull(visual);
+            Assert.IsTrue(visual.HasMeleeRange, "近战武器装上的第一帧就应该有常驻范围扇形");
+            Assert.AreEqual(0, model.ShotsFired, "测试前提：还没有出过手");
+
+            yield return null;
+
+            Transform range = root.transform.Find("MeleeRange_Sword");
+            Assert.IsNotNull(range, "范围扇形应作为武器架的兄弟节点存在");
+            LineRenderer line = range.GetComponent<LineRenderer>();
+            Assert.IsNotNull(line);
+            Assert.IsTrue(line.enabled, "还没攻击时范围扇形也要可见");
+            Assert.Greater(line.positionCount, 2, "范围扇形至少要有一条弧线，不能只有中心点");
+
+            Object.Destroy(root);
+        }
+
+        [UnityTest]
         public IEnumerator EnemyHealthBarAppearsAfterDamage()
         {
             var def = new EnemyDef
