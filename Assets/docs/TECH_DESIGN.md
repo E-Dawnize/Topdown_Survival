@@ -638,7 +638,8 @@ Assets/
                     ResultView, ResultLines, MainMenuView, PlayerView, UnitView,
                     CompanionView, PickupView, ProjectileView, WeaponVisual,
                     WeaponVisualStyle, WeaponVisualCatalog, CombatEffects, CombatEffectView,
-                    EnemyProjectileViewPool, EnemyHealthBar, DamageNumbers, CameraRig, CameraFocus, CameraPreset,
+                    EnemyProjectileViewPool, EnemyHealthBar, DamageNumbers, WeaponRangeIndicator,
+                    FanRangeIndicator, CircleRangeIndicator, CameraRig, CameraFocus, CameraPreset,
                     PrimitiveViewFactory, SharedViewMaterial, UiFont, TimeFormat
     Services/       InputService
     Editor/         导表调用

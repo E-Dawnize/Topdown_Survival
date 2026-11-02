@@ -37,13 +37,16 @@ namespace Game.Systems.Weapons
 
         public void Tick(WeaponModel weapon, Vector2 shooterPosition, Vector2 facing, in ShooterStats stats, float dt)
         {
+            // 有效射程每步都写：远程的常驻圆形范围在第一次开火前也要反映射程加成。
+            weapon.LastRange = stats.EffectiveRange(weapon.Range);
+
             if (!weapon.IsReady) return;
 
             // 表里速度填 0 的远程武器永远打不中，是导表该拦的数据错误；
             // 这里不开火也不吃冷却，至少不会把一件坏数据变成"这把武器哑了 0.85 秒"
             if (weapon.ProjectileSpeed <= 0f) return;
 
-            float range = stats.EffectiveRange(weapon.Range);
+            float range = weapon.LastRange;
 
             // 索敌走 EnemySystem 的共享 API：射手只提供自己的结果容器，不在武器里再实现一份“射程内最近活目标”
             int slot = _enemies.FindNearestAliveSlot(shooterPosition, range, _candidates);
@@ -59,9 +62,6 @@ namespace Game.Systems.Weapons
             // 贴身重合时方向没有意义，退回射手朝向：距离为 0，取哪个方向都不影响命中判定
             Vector2 aim = distance > MinAimDistance ? toTarget / distance : facing;
             weapon.AimDirection = aim;
-
-            // 记录这次开火的有效射程，供表现层与调试层读取（近战的扇形也走同一个字段）。
-            weapon.LastRange = range;
 
             bool isCrit = WeaponDamage.RollCrit(_rng.Next01(), stats);
             float falloff = WeaponDamage.DistanceFalloff(distance, range);

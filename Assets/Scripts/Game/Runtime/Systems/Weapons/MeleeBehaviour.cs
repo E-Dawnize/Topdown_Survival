@@ -45,9 +45,10 @@ namespace Game.Systems.Weapons
 
         public void Tick(WeaponModel weapon, Vector2 shooterPosition, Vector2 facing, in ShooterStats stats, float dt)
         {
-            // 射程每步都写一份：近战的常驻范围指示器在第一次出手之前就要显示
-            // 加成后的射程，不能等到 Fire 时才更新。
+            // 射程与朝向每步都写一份：常驻范围扇形在第一次出手之前就要显示当前朝向与
+            // 加成后的射程，不能等到 Fire 时才更新。玩家转向时扇形也跟着转。
             weapon.LastRange = stats.EffectiveRange(weapon.Range);
+            weapon.AimDirection = facing;
 
             if (_swinging)
             {
@@ -83,9 +84,7 @@ namespace Game.Systems.Weapons
             _windowEnd = weapon.MeleeWindowEnd;
 
             _swingCrit = WeaponDamage.RollCrit(_rng.Next01(), stats);
-            weapon.AimDirection = facing;
-            // 表现层的扇形按这个值画：射程加成以后弧线与判定仍然同宽。
-            weapon.LastRange = stats.EffectiveRange(weapon.Range);
+            // 朝向与射程已经在 Tick 开头写过；这里只负责真正开始冷却。
             weapon.Fire(stats);
         }
 
