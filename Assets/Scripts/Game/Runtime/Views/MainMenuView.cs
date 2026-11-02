@@ -1,6 +1,5 @@
 using Game.Core;
 using UnityEngine;
-using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace Game.Views
@@ -43,21 +42,17 @@ namespace Game.Views
         {
             if (_leaving) return;
 
-            Keyboard keyboard = Keyboard.current;
-
-            // 没有键盘（只有手柄、或设备被拔掉）时菜单照常显示，只是按不动。
-            // 手柄要在 InputService 里配 UI Map 才有，而主菜单没有 InputService（见类注释）。
-            if (keyboard == null) return;
-            if (!keyboard.enterKey.wasPressedThisFrame && !keyboard.spaceKey.wasPressedThisFrame &&
-                !keyboard.numpadEnterKey.wasPressedThisFrame)
+            if (MenuInput.Submit(null))
             {
+                StartRun();
                 return;
             }
 
-            StartRun();
+            if (MenuInput.Cancel(null)) QuitGame();
         }
 
-        void StartRun()
+        /// <summary>菜单上的“开始”动作。公开是为了让场景切换测试不必伪造键盘事件。</summary>
+        public void StartRun()
         {
             if (_sceneFlow == null)
             {
@@ -67,6 +62,12 @@ namespace Game.Views
 
             _leaving = true;
             _sceneFlow.LoadRun();
+        }
+
+        /// <summary>独立构建里按 Esc / 手柄 B 退出；编辑器里 Application.Quit 不会关编辑器。</summary>
+        static void QuitGame()
+        {
+            Application.Quit();
         }
 
         /// <summary>

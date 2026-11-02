@@ -43,6 +43,9 @@ namespace Game.Views
 
         bool _visible;
 
+        /// <summary>场景流程测试用：结算面板是否已显示。</summary>
+        public bool IsVisible => _visible;
+
         /// <summary>已经按下过键：LoadScene 要到帧末才真的切，这一帧之后再按不该再来一次。</summary>
         bool _leaving;
 
@@ -84,15 +87,23 @@ namespace Game.Views
 
         void Update()
         {
-            if (!_visible || _leaving || _input == null) return;
+            if (!_visible || _leaving) return;
 
-            // 两键同帧按下时只认第一个：Enter 已经要重开这一局了，不该再顺带回一趟主菜单
-            if (_input.UiSubmitPressed) Leave(_sceneFlow, restart: true);
-            else if (_input.UiCancelPressed) Leave(_sceneFlow, restart: false);
+            // 两键同帧按下时只认第一个：Enter 已经要重开这一局了，不该再顺带回一趟主菜单。
+            // MenuInput 同时覆盖 InputService 的 UI Map 与设备直读，测试/热重载下不会失灵。
+            if (MenuInput.Submit(_input)) Leave(_sceneFlow, restart: true);
+            else if (MenuInput.Cancel(_input)) Leave(_sceneFlow, restart: false);
         }
+
+        /// <summary>重开这一局。公开给场景流程测试用；正常输入仍走 Update 的 MenuInput。</summary>
+        public void RestartRun() => Leave(_sceneFlow, restart: true);
+
+        /// <summary>回主菜单。公开给场景流程测试用；正常输入仍走 Update 的 MenuInput。</summary>
+        public void ReturnToMainMenu() => Leave(_sceneFlow, restart: false);
 
         void Leave(ISceneFlow sceneFlow, bool restart)
         {
+            if (_leaving) return;
             _leaving = true;
 
             if (sceneFlow == null)

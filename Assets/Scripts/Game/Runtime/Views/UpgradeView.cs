@@ -59,6 +59,9 @@ namespace Game.Views
         bool _navLatched;
         int _selected;
 
+        /// <summary>场景流程测试用：升级面板是否已显示。</summary>
+        public bool IsVisible => _visible;
+
         public void Bind(BuildController build, RunController runController, InputService input)
         {
             _build = build;
@@ -102,19 +105,17 @@ namespace Game.Views
         {
             if (!_visible || _build == null) return;
 
-            if (_input == null) return;
-
             HandleNavigate();
 
-            if (_input.UiSubmitPressed) _runController?.ChooseUpgrade(_selected);
-            if (_input.UiRefreshPressed) _runController?.RerollUpgrade();
+            if (MenuInput.Submit(_input)) _runController?.ChooseUpgrade(_selected);
+            if (MenuInput.Refresh(_input)) _runController?.RerollUpgrade();
         }
 
         void HandleNavigate()
         {
             // 卡片是横向排列的，只认水平轴。W/S 在 UI Map 里也会进 Navigate，
             // 用双轴判断会让"按 W"变成"向右选"。
-            float axis = _input.UiNavigate.x;
+            float axis = MenuInput.NavigateX(_input);
             if (Mathf.Abs(axis) < NavigateDeadZone)
             {
                 _navLatched = false;

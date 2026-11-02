@@ -5,7 +5,8 @@
         "Game.Runtime",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
-        "Cinemachine"
+        "Cinemachine",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
