@@ -22,10 +22,11 @@
 - 全屏吸取：E/RB（手柄 RB）立即结算场上所有经验球，12 秒冷却；只吸经验，不吸心。右下角有独立冷却条。
 - 回血掉落率从 12% 下调到 9%，一颗心仍回 8 点生命。
 - `DirectorSystem` 按时间轴刷怪：数量、怪种池、精英概率、同屏上限、血量/伤害/速度倍率随时间上升。
+- `Test_Arena` 启动时铺 200 个普通怪，并使用与墙体/相机一致的 ±20 场地边界；正式 Run 仍使用 ±67。
 - 前期密度已压低：0–45 秒 2.2 秒 1 只、同屏上限 12；0:45–1:45 上限 20，避免开局清不动。
 - 击杀掉经验，磁吸拾取后升级；升级暂停并弹三选一（10/20 级四选一），可免费重抽一次。
 - 构筑四条主干：
-  - 武器：6 把，最多 4 把，每把 5 级；Lv3 +1 弹道、Lv4 +1 穿透；每把都有 CC0 模型 prefab、拖尾跟随和攻击动作。
+  - 武器：6 把，最多 4 把，每把 5 级；远程武器 Lv3 +1 弹道、Lv4 +1 穿透；近战升级提供伤害/冷却成长，卡面不再显示远程专属里程碑。每把都有 CC0 模型 prefab、拖尾跟随和攻击动作。
   - 弓箭：冷却末尾在弓上搭箭并后拉，放箭时收起；飞行物就是弓上搭的那支 `Projectile_Arrow` 实例：开火时从弓上摘下交给投射物池，随后在弓上复制新搭箭；视觉上从弓把沿直线飞向瞄准点，不再横向平移。
   - 旅伴：6 个，最多 4 个，每个 3 级；四阵营 2/4 件羁绊。
   - 数值：14 张，按层数叠 StatBlock。
@@ -49,8 +50,8 @@
 
 | 分类 | 内容 | 规模 |
 |---|---|---|
-| 运行时代码 | 97 文件 | 约 13.5k 行 |
-| 测试 | 36 文件 / 243 用例（228 EditMode + 15 PlayMode） | 约 6.8k 行 |
+| 运行时代码 | 104 文件 | 约 16.2k 行 |
+| 测试 | 36 文件 / 252 用例（237 EditMode + 15 PlayMode） | 约 7.1k 行 |
 | 配置 | 10 张表 | 3 角色 / 6 武器 / 6 旅伴 / 8 敌人 / 21 buff / 8 导演段 / 30 级 / 43 构筑卡 / 4 组合 |
 | 构筑卡 | 43 张 | 武器 6 / 旅伴 6 / 数值 14 / buff 与机制 17 |
 
@@ -65,6 +66,23 @@
 - 依赖方向：`UnitId` 下沉到 `Model`，`ViewSnapshot` 删除（改为 `PlayerModel.Forward` + 显式坐标），`RunLoop`/`PlayerView`/`CameraRig` 不再回查 `AppRoot.Instance`。
 - 删除死代码与死事件：`UpgradeChosen`、`BuildChanged`、`DamageFlags.TriggerHit/ShowNumber`、`SpatialGrid.QueryNearest`、`HudValues.Merge/Equals`、`InputSnapshot.Aim/Skill/Pause`。
 
+## 本轮优化（2026-11）
+
+- 击杀一击仍会处理 `Lifesteal` / `OnHitChain` / `OnHitExplode`：命中位置来自事件，不再要求目标在清理后仍然存在。
+- 近战卡面不再承诺只属于远程的“弹道 +1 / 穿透 +1”；近战等级仍提供伤害与冷却成长。
+- `Test_Arena` 使用 ±20 场地边界，并在启动时铺 200 个普通怪；`Test_Arena` 墙体、相机预设和玩家边界统一到同一边界。
+- `AppRoot` 启动时校验 Player/HUD/ProjectileArrow/CameraRig/WeaponVisualCatalog 和敌人 prefab；缺失时显示启动错误并停止装配。
+- `Balance` 增加必需 key、重复 key 和关键区间校验；导表脚本增加对应数值检查。
+- 升级/结算面板跳过打开帧的输入；命中定格结束帧保持 alpha=1，避免视图回退。
+- BOSS 召唤受最后一段 `ConcurrentCap` 约束；发布构建禁用 `DebugOverlay`；场景销毁清理静态手递/枪口状态。
+- 伤害统一：新增 `IDamageable` + `DamageService`，玩家/敌人/旅伴共用同一套伤害计算、HP 写回和最后伤害来源；玩家仍保留 `PlayerDamaged` 兼容事件，旅伴新增 HP/IsAlive 与 `UnitDamaged` 契约。
+- 真实伤害：`DamageType.True` 只绕过护甲，不绕过闪避/无敌帧；玩家/敌人/旅伴共享同一套 `DamageResolver` 测试。
+- 注意：旅伴目前可以被 `DamageService` 伤害并有模型状态，但敌人 AI 尚未把旅伴纳入目标选择；这是下一步内容接入点。
+- 发布准备：默认窗口改为 1920×1080 可调整窗口；Windows 启动时校正客户区，运行 Canvas 根显式铺满屏幕；HUD 删除 F1/F2/F3 调试提示；`Test_Arena` 从 Build Settings 禁用；`DebugOverlay` 在非编辑器/非 Development Build 中禁用。
+- 本地验证入口：`tools/verify.ps1`（导表、编译、可选 Unity EditMode/PlayMode）。
+
+验证：Runtime/EditMode/PlayMode/Editor 编译 0 错误；仓库外 NUnit harness 发现 237 个 EditMode 用例，230 个通过、7 个依赖 Unity 原生资产的用例因 harness 环境缺失报错；真实配置 10 分钟全流程测试通过。Unity batchmode 因当前工程被另一个 Unity 实例占用，尚未复跑 237/237 与 15/15。
+
 ## 验证矩阵
 
 已验证：
@@ -72,9 +90,9 @@
 | 项 | 怎么验的 | 结果 |
 |---|---|---|
 | 编译 | 独立验证工程编译 Runtime + Editor + 全部测试源码 | 0 错 0 警告 |
-| EditMode 全部用例 | Unity Test Framework（EditMode，工程副本） | 228 / 228 通过（含暂停/恢复状态机） |
+| EditMode 全部用例 | Unity Test Framework（EditMode，工程副本） | 228 / 228 通过（v0.6 基线；本轮新增 9 条，待 Unity 复跑） |
 | PlayMode 装配 | Unity PlayMode 测试（工程副本） | 15 / 15 通过（相机/武器/血条/飘字/范围，以及主菜单→Run→升级→暂停→死亡结算→回菜单/重开） |
-| 真实配置 10 分钟 | 36007 步模拟，自动选卡 | 等级 30、击杀 1592、最高同屏 101、武器 4、旅伴 3、组合 1、buff 4，约 0.5 秒（托管侧） |
+| 真实配置 10 分钟 | 36007 步模拟，自动选卡 | 等级 30、击杀 1568、最高同屏 120、武器 4、旅伴 1、组合 3、buff 7，约 0.6 秒（托管侧） |
 | 真实配置 BOSS | 10:00 切 Boss，清空血条 | 胜利收尾 |
 | 抽卡规则 | 单元测试 | 不重复、槽位/满级/满层过滤、重抽次数、标签组合触发 |
 | buff 触发 | 单元测试 | 击杀叠攻速/回血、受击叠甲、低血开关、周期回复、爆炸/链电/环绕/吸血/反伤、Reset 回滚 |
@@ -101,7 +119,7 @@
 2. 角色特性未接：`TraitType` 是预留字段。
 3. 旅伴 AI 只做直线目标点，不做寻路；大群阻挡时可能绕不理想。
 4. 真实配置全流程测试里玩家血量/拾取范围拉满，只验证链路，不代表实际生存难度。
-5. BOSS 固定 27900 血，没有按玩家 DPS 动态调整；熟练玩家可能秒杀。
+5. BOSS 固定 26100 血（9000 × 最后一段 2.9 血量倍率），没有按玩家 DPS 动态调整；熟练玩家可能秒杀。
 6. 30 级满级后经验不再有用；终局最后 1 分钟没有额外目标。
 7. 商店/波次代码已删除，旧文档（ARCHITECTURE_REVIEW / MODULE_REPORTS / DEMO_REPORT）保留为历史记录。
 8. v0.6 已在独立工程副本跑 EditMode 228/228、PlayMode 15/15；主工程 Unity Play 的主菜单/暂停排版、真实键鼠/手柄、血条/飘字/E 吸取/攻击范围效果与武器 draw call 仍未手测。
@@ -116,4 +134,4 @@
 
 ## 仓库
 
-`feat/demo` 分支。配置源 `Config/GameConfig.xlsx`，导出 `Assets/StreamingAssets/Config/*.json`，导表 `python tools/export_config.py`。
+`main` 分支。配置源 `Config/GameConfig.xlsx`，导出 `Assets/StreamingAssets/Config/*.json`，导表 `python tools/export_config.py`。

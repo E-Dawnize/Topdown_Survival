@@ -47,7 +47,7 @@
 
 1. Unity Hub 打开本目录，等包下载完、编译结束。
 2. 打开 `Assets/Scenes/MainMenu.unity`，按 Play；也可以直接打开 `Assets/Scenes/Run.unity` 调试单局。
-3. F1 开关调试覆盖层，应能看到配置版本与输入状态。
+3. F1 开关调试覆盖层（仅编辑器/Development Build；发布构建不显示），应能看到配置版本与输入状态。
 
 构建入口是 MainMenu，Boot 是旧场景，已在 Build Settings 中禁用。场景由手工维护，仓库里没有“重建全部场景”菜单。
 
@@ -70,6 +70,7 @@ python tools/export_config.py
 | `tools/make_config_template.py` | 重新生成 xlsx 模板（`--force` 覆盖） |
 | `tools/export_config.py` | xlsx → json，带校验 |
 | `tools/gen_meta.py` | 给新加的 Assets 文件补稳定 guid 的 .meta |
+| `tools/verify.ps1` | 导表校验 + 四个工程编译；设置 `UNITY_EXE` 后可选跑 EditMode/PlayMode |
 | `Tools/Weapons/Create Missing Visual Prefabs` | 只补缺失的武器/箭 prefab，不覆盖手调 prefab |
 | `Tools/Weapons/Force Rebuild Visual Prefabs (overwrites)` | 由 FBX 强制重建全部 prefab + catalog，会覆盖 prefab 手调 |
 
@@ -87,7 +88,7 @@ Assets/Scripts/Game/
     Config/        配置库与 Def
     Services/      输入
   Editor/          导表入口、武器 prefab 生成器
-  Tests/EditMode/  219 个用例 + PlayMode 5 个（相机装配、武器 prefab 动作、弓箭搭箭/交接、箭直线路径）
+  Tests/EditMode/  237 个用例；PlayMode 15 个（相机装配、武器 prefab 动作、弓箭搭箭/交接、箭直线路径、主菜单/暂停/结算流程）
 Assets/Prefabs/Weapons/   Weapon_{Id}.prefab（WeaponVisual + 模型 + 闪光）
 Assets/Resources/         WeaponVisualCatalog.asset
 Assets/Prefabs/Projectiles/ Projectile_Arrow.prefab（由 UnitPrefabMap 引用）

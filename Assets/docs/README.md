@@ -107,4 +107,4 @@ Assets/docs/
 - 完整 MainMenu → Run → 商店 → 结算 → 重开仍未在 Unity PlayMode 验证。
 - `Test_Arena` 的相机边界、玩家边界和场景墙体仍是三份数据，尚未统一为按场景的 StageProfile。
 - `CameraPreset_Boss` / `CameraPreset_Menu` 已有配置，但相机多模式切换尚未接线。
-- `MODULE_REPORTS.md` 的测试分布是当前 196 用例的更新版，但模块文字仍保留 feat/demo 时期的部分判断；以 `STATUS.md` 和 `ARCHITECTURE_REVIEW.md` 为准。
+- `MODULE_REPORTS.md` 的测试分布是历史版本的更新版（当前为 252 用例），但模块文字仍保留 feat/demo 时期的部分判断；以 `STATUS.md` 和 `ARCHITECTURE_REVIEW.md` 为准。
