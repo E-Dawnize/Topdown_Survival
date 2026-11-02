@@ -20,13 +20,20 @@ namespace Game.Core
         float _accumulator;
         float _hitStop;
 
+        /// <summary>
+        /// 定格结束的那一帧也要保持 alpha=1。
+        /// BeginFrame 在这一帧只扣掉 hitstop、不会执行新的固定步；如果立刻按累加器算 alpha，
+        /// 视图会从“最后一步的当前位置”退回到上一步，表现为每次定格结束都抖一下。
+        /// </summary>
+        bool _holdLastAlpha;
+
         public bool IsHitStopped => _hitStop > 0f;
 
         /// <summary>
         /// 视图插值系数。定格期间给 1：画面停在最后一步的模拟结果上，
         /// 按累加器余量算会让画面退回上一步，看起来像被打回去了一点。
         /// </summary>
-        public float Alpha => IsHitStopped ? 1f : Mathf.Clamp01(_accumulator / FixedStep);
+        public float Alpha => IsHitStopped || _holdLastAlpha ? 1f : Mathf.Clamp01(_accumulator / FixedStep);
 
         /// <summary>请求定格。已经在定格里时取更长的那个，短请求不会把长定格截短。</summary>
         public void RequestHitStop(float seconds)
@@ -41,9 +48,17 @@ namespace Game.Core
         /// </summary>
         public int BeginFrame(float realDelta)
         {
+            _holdLastAlpha = false;
+
             if (_hitStop > 0f)
             {
                 _hitStop -= realDelta;
+                if (_hitStop <= 0f)
+                {
+                    _hitStop = 0f;
+                    _holdLastAlpha = true;
+                }
+
                 return 0;
             }
 

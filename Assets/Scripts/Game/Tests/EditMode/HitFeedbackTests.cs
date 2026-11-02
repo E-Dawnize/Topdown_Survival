@@ -64,6 +64,22 @@ namespace Game.Tests
         }
 
         [Test]
+        public void AlphaStaysOnLastStepForTheFrameHitStopEnds()
+        {
+            var clock = new RunClock();
+            AdvanceOneFrame(clock);
+            clock.RequestHitStop(0.02f);
+
+            // 这一帧把 hitstop 扣完，但不会执行新的固定步。
+            int steps = clock.BeginFrame(0.03f);
+
+            Assert.AreEqual(0, steps, "定格结束帧不应补跑固定步");
+            Assert.IsFalse(clock.IsHitStopped);
+            Assert.AreEqual(1f, clock.Alpha, 1e-6f,
+                "定格结束帧仍要停在最后一步，不能退回上一步；下一帧再按累加器插值");
+        }
+
+        [Test]
         public void HitStopAfterSomeStepsKeepsTheUnspentAccumulator()
         {
             var clock = new RunClock();

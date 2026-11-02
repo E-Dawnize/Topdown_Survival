@@ -113,8 +113,16 @@ namespace Game.Controllers
             int next = currentLevel + 1;
             string text = baseText + "　·　Lv" + currentLevel + " → Lv" + next +
                           "　伤害 +" + (rules.DamagePerLevel * 100f).ToString("0") + "%";
-            if (next == rules.ProjectileMilestone) text += "　弹道 +1";
-            if (next == rules.PierceMilestone) text += "　穿透 +1";
+
+            // ProjectileCount / Pierce 只被 RangedBehaviour 消费。
+            // 近战也显示“弹道 +1 / 穿透 +1”会让玩家以为近战升级有额外弹道，
+            // 实际 MeleeBehaviour 只做一次扇形判定。卡面必须和真正生效的规则一致。
+            if (weapon.Kind == WeaponKind.Ranged)
+            {
+                if (next == rules.ProjectileMilestone) text += "　弹道 +1";
+                if (next == rules.PierceMilestone) text += "　穿透 +1";
+            }
+
             return text;
         }
 

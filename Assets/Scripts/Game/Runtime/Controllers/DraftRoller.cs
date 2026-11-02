@@ -91,6 +91,16 @@ namespace Game.Controllers
             }
         }
 
+        bool HasRangedWeapon()
+        {
+            for (int i = 0; i < _weapons.Count; i++)
+            {
+                if (_weapons.Weapons[i].Def.Kind == WeaponKind.Ranged) return true;
+            }
+
+            return false;
+        }
+
         bool IsEligible(UpgradeDef def)
         {
             switch (def.Category)
@@ -121,6 +131,13 @@ namespace Game.Controllers
                            && _state.BuffCardsOf(def.Id) < Math.Max(1, def.MaxStacks);
 
                 default:
+                    // 弹道数是远程武器独占属性；纯近战 build 抽到“分裂箭”只会是一张空卡。
+                    if ((def.StatA == StatType.ProjectileCount || def.StatB == StatType.ProjectileCount) &&
+                        !HasRangedWeapon())
+                    {
+                        return false;
+                    }
+
                     return _state.StatStacksOf(def.Id) < Math.Max(1, def.MaxStacks);
             }
         }

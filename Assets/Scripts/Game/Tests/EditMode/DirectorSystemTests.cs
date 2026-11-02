@@ -117,6 +117,31 @@ namespace Game.Tests
         }
 
         [Test]
+        public void BossAddsRespectConcurrentCap()
+        {
+            var config = TestContent.Config();
+            var custom = new List<DirectorDef>
+            {
+                new DirectorDef
+                {
+                    Id = "BossOnly", StartTime = 0, EndTime = 2, Threat = 9, SpawnInterval = 1,
+                    SpawnCountMin = 1, SpawnCountMax = 1, EnemyPool = new[] { "Crawler" },
+                    EliteChance = 0, ConcurrentCap = 2, HpScale = 1, DamageScale = 1, SpeedScale = 1,
+                    BossId = "SutureGolem", BossAddInterval = 0.1f, BossAddCount = 2
+                }
+            };
+
+            var (director, enemies, _) = Build(custom);
+            enemies.Spawn(config.Enemies["Crawler"], Vector2.zero);
+            Assert.IsTrue(director.BeginBoss(Vector2.zero));
+            Assert.AreEqual(2, enemies.AliveCount, "一个普通怪 + BOSS 已经把 ConcurrentCap 占满");
+
+            director.Tick(1f, Vector2.zero);
+
+            Assert.AreEqual(2, enemies.AliveCount, "BOSS 召唤不能突破最后一段的 ConcurrentCap");
+        }
+
+        [Test]
         public void BossPropertiesAllReadTheSameBossFightState()
         {
             var (director, _, _) = Build();

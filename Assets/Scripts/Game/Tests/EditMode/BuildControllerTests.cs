@@ -241,6 +241,32 @@ namespace Game.Tests
             }
         }
 
+        [Test]
+        public void MeleeCardDetailDoesNotPromiseRangedOnlyMilestones()
+        {
+            TestRun run = TestRun.Create();
+            var state = new BuildState(run.Player, run.Config.Combos, run.Config.Buffs, run.Buffs, run.Bus);
+            var describer = new DraftDescriber(run.Config.Weapons, run.Config.Companions, run.Config.Buffs,
+                run.Companions, run.Weapons, state);
+
+            var sword = run.Weapons.AddWeapon(run.Config.Weapons["Sword"]);
+            UpgradeDef swordCard = run.Config.Upgrades["U_Weapon_Sword"];
+
+            sword.UpgradeLevel();   // Lv2 -> 下一级 3：近战不应承诺弹道 +1
+            StringAssert.DoesNotContain("弹道", describer.Describe(swordCard).Detail);
+
+            sword.UpgradeLevel();   // Lv3 -> 下一级 4：近战不应承诺穿透 +1
+            StringAssert.DoesNotContain("穿透", describer.Describe(swordCard).Detail);
+
+            var bow = run.Weapons.Find("Bow");
+            UpgradeDef bowCard = run.Config.Upgrades["U_Weapon_Bow"];
+            bow.UpgradeLevel();     // Lv2 -> 下一级 3
+            StringAssert.Contains("弹道", describer.Describe(bowCard).Detail);
+
+            bow.UpgradeLevel();     // Lv3 -> 下一级 4
+            StringAssert.Contains("穿透", describer.Describe(bowCard).Detail);
+        }
+
         /// <summary>反复开卡直到出现满足条件的卡并选中。测试配置总共 10 张卡，20 次内必出现。</summary>
         static bool TryPick(BuildController build, Func<BuildController.DraftOption, bool> predicate)
         {

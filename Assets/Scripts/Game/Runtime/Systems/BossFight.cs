@@ -204,6 +204,12 @@ namespace Game.Systems
         {
             if (count <= 0) return;
 
+            // BOSS 召唤同样受最后一段的 ConcurrentCap 约束。
+            // 否则玩家拖长战斗时，召唤物会无限累积，既没有玩法收益，也会把压力测试的基线破坏掉。
+            int room = _config.ConcurrentCap - _enemies.AliveCount;
+            if (room <= 0) return;
+            if (count > room) count = room;
+
             for (int i = 0; i < count; i++)
             {
                 EnemyDef def = PickEnemy(_config.EnemyPool);
